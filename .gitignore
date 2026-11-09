@@ -1,0 +1,71 @@
+# Byte-compiled / cached files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+pip-wheel-metadata/
+
+# Installers
+*.egg
+*.whl
+.Python
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.hypothesis/
+
+# Type checkers / linters
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.dmypy.json
+.cache/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# uv
+# Note: keep uv.lock tracked (uv recommends committing it)
+
+# IDEs / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OpenCode (agent config and session files, not project code)
+opencode.jsonc
+.opencode/
+
+# macOS
+.DS_Store
+
+# OS / misc
+Thumbs.db
