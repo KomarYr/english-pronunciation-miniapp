@@ -14,6 +14,26 @@ speech_endpoint: str | None = environ.get("SERVICE_ENDPOINT")
 # Target language of the practice exercises.
 language = "en-US"
 
+# SQLite database location (gitignored).
+db_path = PROJECT_ROOT / "data" / "app.db"
+
+# Telegram bot (M5). Leave TELEGRAM_BOT_TOKEN empty to run CLI-only.
+telegram_bot_token: str | None = environ.get("TELEGRAM_BOT_TOKEN")
+
+
+def _parse_allowed_telegram_ids() -> frozenset[int]:
+    """Parse ALLOWED_TELEGRAM_IDS=123,456 from .env; empty → nobody allowed."""
+    raw = environ.get("ALLOWED_TELEGRAM_IDS", "")
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    try:
+        return frozenset(int(part) for part in parts)
+    except ValueError:
+        sys.exit(f"ALLOWED_TELEGRAM_IDS must be comma-separated integers, got {raw!r}")
+
+
+# Closed by default: users must be added to .env to use the Telegram bot.
+allowed_telegram_ids = _parse_allowed_telegram_ids()
+
 # Custom-text guardrails: a user-submitted exercise must fit this window.
 CUSTOM_TEXT_MIN_WORDS = 10
 CUSTOM_TEXT_MAX_WORDS = 50

@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "aiogram>=3.31.0",
     "azure-cognitiveservices-speech>=1.53.0",
     "dotenv>=0.9.9",
     "langdetect>=1.0.9",
@@ -15,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 speech-project-azure = "speech_project_azure.interactions.cli:main"
+speech-project-telegram = "speech_project_azure.interactions.telegram:main"
 speech-project-azure-demo = "speech_project_azure.recognizer:main"
 
 [build-system]
@@ -24,6 +26,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.17.4",
     "ty>=0.0.99",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

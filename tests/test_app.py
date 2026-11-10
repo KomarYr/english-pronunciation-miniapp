@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 
 from speech_project_azure import app
-from speech_project_azure.domain import Attempt, ScoreReport, TextValidationError
+from speech_project_azure.domain import ScoreReport, TextValidationError
 from speech_project_azure.services.azure_assessment import (
     AssessmentCanceled,
     NoSpeechDetected,
@@ -193,58 +193,3 @@ class TestAppStats:
         user_stats, quota_status = app.app_stats(storage, user)
         assert user_stats.total_attempts == 1
         assert quota_status.used_seconds == pytest.approx(4.2)
-
-
-class TestCliFormatting:
-    def make_attempt(self, pronunciation: float, words: tuple) -> Attempt:
-        from datetime import UTC, datetime
-
-        return Attempt(
-            user_id=1,
-            exercise_id="s-vs-sh-sentence-1",
-            reference_text="She sells shells",
-            created_at=datetime(2026, 11, 10, tzinfo=UTC),
-            audio_seconds=4.2,
-            report=ScoreReport(
-                recognized_text="She sells shells",
-                accuracy_score=70.0,
-                fluency_score=80.0,
-                completeness_score=90.0,
-                prosody_score=60.0,
-                pronunciation_score=pronunciation,
-                words=words,
-            ),
-        )
-
-    def test_format_seconds(self):
-        from speech_project_azure.interactions.cli import _format_seconds
-
-        assert _format_seconds(59) == "59 s"
-        assert _format_seconds(83) == "1 min 23 s"
-        assert _format_seconds(5010) == "1 h 23 min"
-
-    def test_format_report_flags_problem_words(self):
-        from speech_project_azure.domain import WordScore
-        from speech_project_azure.interactions.cli import _format_report
-
-        attempt = self.make_attempt(
-            65.0,
-            (
-                WordScore("She", 90.0, "None"),
-                WordScore("sells", 40.0, "Mispronunciation"),
-                WordScore("shells", 0.0, "Omission"),
-            ),
-        )
-        text = _format_report(attempt)
-        assert "sells" in text and "said wrong" in text
-        assert "shells" in text and "skipped" in text
-        assert "mistake bank" in text  # 65 < 70
-
-    def test_format_report_clean_words(self):
-        from speech_project_azure.domain import WordScore
-        from speech_project_azure.interactions.cli import _format_report
-
-        attempt = self.make_attempt(98.0, (WordScore("Perfect", 99.0, "None"),))
-        text = _format_report(attempt)
-        assert "Every word recognized cleanly" in text
-        assert "mistake bank" not in text

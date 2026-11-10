@@ -1,20 +1,26 @@
 """Interactive CLI: menu → microphone → per-word pronunciation report.
 
-Thin adapter over app.py: reads input, calls use-cases, renders results.
-All business rules (quota, guardrails, mistake bank) live in app.py.
+Thin adapter over app.py: reads input, calls use-cases, renders results
+(via the shared rendering module). All business rules (quota, guardrails,
+mistake bank) live in app.py.
 """
 
 from speech_project_azure import app, settings
-from speech_project_azure.domain import Attempt, TextValidationError, User
+from speech_project_azure.domain import TextValidationError, User
+from speech_project_azure.interactions.rendering import (
+    format_mistake_bank,
+    format_report,
+    format_stats,
+)
 from speech_project_azure.services.azure_assessment import (
     AssessmentCanceled,
     AssessmentError,
     NoSpeechDetected,
 )
-from speech_project_azure.services.quota import QuotaExceededError, QuotaStatus
-from speech_project_azure.services.storage import ExerciseStat, Storage, UserStats
+from speech_project_azure.services.quota import QuotaExceededError
+from speech_project_azure.services.storage import Storage
 
-DB_PATH = settings.PROJECT_ROOT / "data" / "app.db"
+DB_PATH = settings.db_path
 
 MENU = """
 What would you like to do?
@@ -24,80 +30,6 @@ What would you like to do?
   4) Stats
   5) Quit
 """
-
-
-def _format_seconds(seconds: float) -> str:
-    minutes, sec = divmod(int(seconds), 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours} h {minutes} min"
-    if minutes:
-        return f"{minutes} min {sec} s"
-    return f"{sec} s"
-
-
-def _format_report(attempt: Attempt) -> str:
-    """Human-readable per-word report — pure function, unit-tested."""
-    report = attempt.report
-    lines = [
-        "",
-        f"You said: {report.recognized_text or '—'}",
-        f"Pronunciation: {report.pronunciation_score:.0f}/100",
-        f"  accuracy     {report.accuracy_score:>5.1f}",
-        f"  fluency      {report.fluency_score:>5.1f}",
-        f"  completeness {report.completeness_score:>5.1f}",
-        f"  prosody      {report.prosody_score:>5.1f}",
-        "",
-    ]
-    marks = {
-        "Mispronunciation": "✗ said wrong",
-        "Omission": "– skipped",
-        "Insertion": "+ extra",
-    }
-    problem_words = [w for w in report.words if w.error_type in marks]
-    if problem_words:
-        lines.append("Words to work on:")
-        for word in problem_words:
-            lines.append(
-                f"  {word.word:<15} {marks[word.error_type]:<14} {word.accuracy_score:.0f}"
-            )
-    else:
-        lines.append("Every word recognized cleanly — nice.")
-    if report.pronunciation_score < app.WEAK_SCORE_THRESHOLD:
-        lines.append("Saved to your mistake bank — practice it again soon.")
-    return "\n".join(lines)
-
-
-def _format_mistake_bank(stats: list[ExerciseStat]) -> str:
-    if not stats:
-        return "Mistake bank is empty — nothing weak so far."
-    lines = ["Your weakest exercises (avg pronunciation score):"]
-    for i, stat in enumerate(stats, start=1):
-        lines.append(
-            f"  {i}) [{stat.avg_pronunciation_score:>5.1f}] {stat.exercise.title}"
-        )
-    return "\n".join(lines)
-
-
-def _format_stats(user_stats: UserStats, quota_status: QuotaStatus) -> str:
-    avg = (
-        f"{user_stats.avg_pronunciation_score:.1f}"
-        if user_stats.avg_pronunciation_score is not None
-        else "—"
-    )
-    lines = [
-        "",
-        f"Attempts this profile: {user_stats.total_attempts}",
-        f"Practice time (graded): {_format_seconds(user_stats.total_audio_seconds)}",
-        f"Average pronunciation:  {avg}",
-        (
-            f"Monthly audio budget:   {_format_seconds(quota_status.used_seconds)} of "
-            f"{_format_seconds(quota_status.limit_seconds)} used"
-        ),
-    ]
-    if quota_status.warn:
-        lines.append("⚠ Over 80% of this month's audio budget is used.")
-    return "\n".join(lines)
 
 
 def _prompt_exercise(storage: Storage, user: User):
@@ -145,7 +77,7 @@ def _practice_flow(
         print("\nMonthly audio budget is exhausted — practice resets on the 1st.")
         print(f"  ({status_error})")
     else:
-        print(_format_report(attempt))
+        print(format_report(attempt))
 
 
 def _practice_menu(storage: Storage, user: User) -> None:
@@ -185,12 +117,12 @@ def _custom_text_flow(storage: Storage, user: User) -> None:
 
 def _mistake_bank_flow(storage: Storage, user: User) -> None:
     print()
-    print(_format_mistake_bank(app.mistake_bank(storage, user)))
+    print(format_mistake_bank(app.mistake_bank(storage, user)))
 
 
 def _stats_flow(storage: Storage, user: User) -> None:
     user_stats, quota_status = app.app_stats(storage, user)
-    print(_format_stats(user_stats, quota_status))
+    print(format_stats(user_stats, quota_status))
 
 
 def main() -> None:

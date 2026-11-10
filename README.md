@@ -5,8 +5,7 @@ assessment**: read an exercise aloud, get a per-word report, and weak
 exercises automatically land in your **mistake bank** so you know exactly
 what to practice next.
 
-Works from the terminal (this repo) and — planned — from a Telegram bot
-that accepts voice notes.
+Works from the terminal and from a **Telegram bot** that accepts voice notes.
 
 ## Features
 
@@ -46,6 +45,52 @@ uv run speech-project-azure
 There is also `uv run speech-project-azure-demo` — the original minimal
 microphone demo, kept for debugging audio setup.
 
+## Telegram bot
+
+The bot reuses the exact same use-cases as the CLI — same database, same
+profiles, same quota. Telegram login matches on `telegram_id`.
+
+### Setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token
+2. Add to `.env`:
+
+   ```ini
+   TELEGRAM_BOT_TOKEN=123456:ABC-your-token
+   ALLOWED_TELEGRAM_IDS=            # comma-separated numeric IDs; empty = nobody
+   ```
+
+3. `uv sync` (needs [ffmpeg](https://ffmpeg.org) on the system for
+   voice-note conversion — `sudo apt install ffmpeg` on Ubuntu)
+4. Run it: `uv run speech-project-telegram` (long polling, no public URL needed)
+
+### Adding users (closed by default)
+
+The allowlist is closed: nobody can use the bot until their ID is in
+`ALLOWED_TELEGRAM_IDS`. To add someone:
+
+1. They open a chat with the bot and send `/id`
+2. The bot replies with their numeric Telegram ID
+3. Append it to `ALLOWED_TELEGRAM_IDS` in `.env` (comma-separated) and
+   restart the bot
+
+Only `/start` and `/id` work for non-allowed users; everything else is
+rejected with their ID as a hint.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `/practice` | pick category → exercise (inline buttons), then send a voice note |
+| `/text` | practice your own English text (10–50 words), then send a voice note |
+| `/mistakes` | your weakest exercises with average scores |
+| `/stats` | attempts, practice time, average score, audio budget |
+| `/id` | show your Telegram ID (works without allowlisting) |
+| `/cancel` | cancel the current action |
+
+Voice notes are converted to 16 kHz mono WAV with ffmpeg before
+assessment; recordings longer than 2 minutes are refused.
+
 ### Microphone note (WSL2)
 
 The mic works through WSLg's PulseAudio. If the tool hears nothing, check
@@ -82,12 +127,12 @@ Words to work on:
 
 ### Architecture
 
-One core with thin interaction adapters — the CLI and the (future)
-Telegram bot only render; all rules live in `app.py`:
+One core with thin interaction adapters — the CLI and the Telegram bot
+only render; all rules live in `app.py`:
 
 ```
 src/speech_project_azure/
-├── settings.py               # .env credentials, language, guardrail limits
+├── settings.py               # .env credentials, language, guardrail limits, bot token
 ├── exercises.py              # built-in catalog (dataclass + seed data)
 ├── domain.py                 # User, Attempt, ScoreReport, WordScore — pure stdlib
 ├── app.py                    # use-cases: quota gate, guardrails, mistake bank
@@ -95,9 +140,12 @@ src/speech_project_azure/
 ├── services/
 │   ├── azure_assessment.py   # the ONLY module importing the Speech SDK
 │   ├── storage.py            # SQLite: users/exercises/attempts + audio_usage ledger
-│   └── quota.py              # monthly 5 h budget policy, warn at 80%
+│   ├── quota.py              # monthly 5 h budget policy, warn at 80%
+│   └── voice.py              # ffmpeg: Telegram OGG/Opus → 16 kHz mono WAV
 └── interactions/
-    └── cli.py                # terminal menu → microphone → report
+    ├── cli.py                # terminal menu → microphone → report
+    ├── telegram.py           # aiogram 3 bot: voice notes → same use-cases
+    └── rendering.py          # report formatters: plain text (CLI), HTML (Telegram)
 ```
 
 Key design decisions:
@@ -116,8 +164,8 @@ Key design decisions:
 - **Custom texts dedupe by hash.** The exercise id is
   `custom-<sha1(normalized text)[:10]>` — the same text is saved once.
 - **One recognizer per attempt**, connections opened per storage
-  operation — safe to call from worker threads (the Telegram bot will
-  wrap sync use-cases with `asyncio.to_thread`).
+  operation — safe to call from worker threads (the Telegram bot wraps
+  sync use-cases with `asyncio.to_thread`).
 
 ### Database
 
@@ -129,7 +177,7 @@ first run. Tables: `users`, `exercises` (builtin + custom), `attempts`
 ### Tests and checks
 
 ```bash
-uv run pytest -q        # 77 tests, no Azure account needed (fakes + tmp DBs)
+uv run pytest -q        # 107 tests, no Azure account or bot token needed
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check .
@@ -139,8 +187,25 @@ The Azure call path itself is a thin shell around
 `recognize_once_async().get()` — everything else (result → domain
 mapping, quota policy, storage) is covered by unit tests with fakes.
 
+## Telegram bot internals
+
+The adapter lives in `interactions/telegram.py` (aiogram 3):
+
+- **FSM states** — `waiting_for_text` and `waiting_for_voice`; which
+  exercise/text is pending rides in the state data (in-memory storage —
+  a bot restart just cancels an in-progress attempt)
+- **Threading** — every storage/Azure call goes through
+  `asyncio.to_thread`; storage opens a connection per operation, so
+  parallel handlers are safe
+- **Allowlist** — one middleware (`AllowlistMiddleware`) gates all
+  updates; handlers never think about permissions
+- **Reports** — the pretty HTML messages are built in
+  `interactions/rendering.py` (`render_report_html`, `render_stats_html`,
+  `render_mistakes_html`); all user-generated strings are HTML-escaped
+
 ## Roadmap
 
 - [x] M1 — package layout, catalog, domain model
+- [x] M2 — Telegram bot: voice notes → WAV → same use-cases, HTML reports
 - [x] M3 — storage, quota ledger, Azure assessment, use-cases, CLI
-- [ ] M5 — Telegram bot: voice notes → WAV → same use-cases
+- [ ] M5 — Telegram bot formatting and image cards
