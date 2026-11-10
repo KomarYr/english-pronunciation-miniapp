@@ -1,19 +1,15 @@
-import os
-from pathlib import Path
-
 import azure.cognitiveservices.speech as speechsdk
-from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # src/ → project root
-load_dotenv(PROJECT_ROOT / ".env")
-
-speech_key = os.environ.get("SUBSCRIPTION_KEY")
-speech_region = os.environ.get("SERVICE_REGION")
-speech_endpoint = os.environ.get("SERVICE_ENDPOINT")
-language = "en-US"
+from speech_project_azure.settings import (
+    _require_azure_credentials,
+    language,
+    speech_endpoint,
+    speech_key,
+)
 
 
 def pronunciation_assessment_from_microphone():
+    _require_azure_credentials()
     config = speechsdk.SpeechConfig(
         subscription=speech_key,
         endpoint=speech_endpoint,
@@ -40,7 +36,7 @@ def pronunciation_assessment_from_microphone():
     pronunciation_config.apply_to(recognizer)
 
     while True:
-        # Receives refernce text from console input.
+        # Receives reference text from console input.
         print("Enter reference text you want to assess, or enter empty text to exit.")
         print("> ", end="")
 
@@ -85,4 +81,9 @@ def pronunciation_assessment_from_microphone():
                 print(f"Error details: {cancellation_details.error_details}")
 
 
-pronunciation_assessment_from_microphone()
+def main() -> None:
+    pronunciation_assessment_from_microphone()
+
+
+if __name__ == "__main__":
+    main()

@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-speech-project-azure = "speech_project_azure:main"
+speech-project-azure = "speech_project_azure.recognizer:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]
