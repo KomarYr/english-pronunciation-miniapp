@@ -11,7 +11,7 @@ speech_key: str | None = environ.get("SUBSCRIPTION_KEY")
 speech_region: str | None = environ.get("SERVICE_REGION")
 speech_endpoint: str | None = environ.get("SERVICE_ENDPOINT")
 
-# Target language of the practice drills.
+# Target language of the practice exercises.
 language = "en-US"
 
 
