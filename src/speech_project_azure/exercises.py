@@ -25,7 +25,7 @@ class Exercise:
     title: str
     reference_text: str  # what the learner reads aloud; sent to Azure as-is
     category: str
-    level: str
+    level: str | None  # CEFR for catalog exercises; None for custom ones
     # IPA phonemes this exercise trains; metadata for menus and stats only.
     phoneme_focus: frozenset[str] = frozenset()
 
