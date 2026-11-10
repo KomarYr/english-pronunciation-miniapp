@@ -10,10 +10,12 @@ requires-python = ">=3.14"
 dependencies = [
     "azure-cognitiveservices-speech>=1.53.0",
     "dotenv>=0.9.9",
+    "langdetect>=1.0.9",
 ]
 
 [project.scripts]
-speech-project-azure = "speech_project_azure.recognizer:main"
+speech-project-azure = "speech_project_azure.interactions.cli:main"
+speech-project-azure-demo = "speech_project_azure.recognizer:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

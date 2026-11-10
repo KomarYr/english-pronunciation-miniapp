@@ -14,6 +14,10 @@ speech_endpoint: str | None = environ.get("SERVICE_ENDPOINT")
 # Target language of the practice exercises.
 language = "en-US"
 
+# Custom-text guardrails: a user-submitted exercise must fit this window.
+CUSTOM_TEXT_MIN_WORDS = 10
+CUSTOM_TEXT_MAX_WORDS = 50
+
 
 def _require_azure_credentials() -> None:
     """Exit early with a clear message when Azure credentials are missing."""
