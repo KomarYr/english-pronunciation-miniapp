@@ -14,6 +14,7 @@ from speech_project_azure.services.azure_assessment import (
     AssessmentError,
     NoSpeechDetected,
     _report_from_result,
+    _speech_duration_seconds,
     _wav_duration_seconds,
     _words_from_assessment,
 )
@@ -27,12 +28,33 @@ def fake_pron_result() -> SimpleNamespace:
         prosody_score=75.0,
         pronunciation_score=89.0,
         words=[
-            SimpleNamespace(word="She", accuracy_score=95.0, error_type="None"),
-            SimpleNamespace(word="sells", accuracy_score=90.0, error_type="None"),
             SimpleNamespace(
-                word="shells", accuracy_score=60.0, error_type="Mispronunciation"
+                word="She",
+                accuracy_score=95.0,
+                error_type="None",
+                phonemes=[
+                    SimpleNamespace(phoneme="ʃ", accuracy_score=94.0),
+                    SimpleNamespace(phoneme="i", accuracy_score=96.0),
+                ],
             ),
-            SimpleNamespace(word="six", accuracy_score=0.0, error_type="Omission"),
+            SimpleNamespace(
+                word="sells",
+                accuracy_score=90.0,
+                error_type="None",
+                phonemes=[SimpleNamespace(phoneme="s", accuracy_score=90.0)],
+            ),
+            SimpleNamespace(
+                word="shells",
+                accuracy_score=60.0,
+                error_type="Mispronunciation",
+                phonemes=[],
+            ),
+            SimpleNamespace(
+                word="six",
+                accuracy_score=0.0,
+                error_type="Omission",
+                phonemes=[],
+            ),
         ],
     )
 
@@ -44,10 +66,23 @@ def fake_sdk_result() -> SimpleNamespace:
 class TestWordMapping:
     def test_maps_all_word_fields(self):
         words = _words_from_assessment(fake_pron_result())
-        assert words[0] == ("She", 95.0, "None") or words[0].word == "She"
         assert words[0].word == "She"
         assert words[0].accuracy_score == 95.0
         assert words[0].error_type == "None"
+
+    def test_maps_phoneme_scores_in_order(self):
+        words = _words_from_assessment(fake_pron_result())
+        assert words[0].phonemes == (("ʃ", 94.0), ("i", 96.0))
+        assert words[1].phonemes == (("s", 90.0),)
+        assert words[2].phonemes == ()  # no phoneme data → empty, not an error
+
+    def test_missing_phonemes_attribute_is_tolerated(self):
+        # very old SDK objects (or lazy fakes) may lack .phonemes entirely
+        pron = SimpleNamespace(
+            words=[SimpleNamespace(word="word", accuracy_score=80.0, error_type="None")]
+        )
+        words = _words_from_assessment(pron)
+        assert words[0].phonemes == ()
 
     def test_maps_all_error_types(self):
         pron = SimpleNamespace(
@@ -124,3 +159,14 @@ class TestWavDuration:
         wav = tmp_path / "b.wav"
         self.write_wav(wav, seconds=2)
         assert _wav_duration_seconds(wav) == pytest.approx(2.0)
+
+
+class TestSpeechDuration:
+    def test_uses_result_duration_when_present(self):
+        result = SimpleNamespace(duration=35_000_000)  # 3.5 s in 100 ns ticks
+        assert _speech_duration_seconds(result, wall_clock=12.0) == pytest.approx(3.5)
+
+    def test_falls_back_to_wall_clock_without_duration(self):
+        result = SimpleNamespace(duration=0)
+        assert _speech_duration_seconds(result, wall_clock=12.0) == 12.0
+        assert _speech_duration_seconds(SimpleNamespace(), wall_clock=7.5) == 7.5

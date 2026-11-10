@@ -146,6 +146,39 @@ class TestAttempts:
         assert loaded == stored
         assert loaded.report.words == make_report().words  # words round-trip exactly
 
+    def test_phonemes_roundtrip(self, storage):
+        user = storage.create_user("u")
+        report = make_report(
+            {
+                "words": (
+                    WordScore(
+                        "jumbles",
+                        73.0,
+                        "Mispronunciation",
+                        phonemes=(("ʤ", 84.0), ("ʌ", 61.0)),
+                    ),
+                    WordScore("six", 0.0, "Omission"),
+                )
+            }
+        )
+        storage.add_attempt(make_attempt(user_id=user.id, report=report))
+        loaded = storage.attempts_for_user(user.id)[0]
+        assert loaded.report.words[0].phonemes == (("ʤ", 84.0), ("ʌ", 61.0))
+        assert loaded.report.words[1].phonemes == ()
+
+    def test_legacy_rows_without_phonemes_load(self, storage, tmp_path):
+        # simulate rows written before phonemes existed in words_json
+        user = storage.create_user("u")
+        storage.add_attempt(make_attempt(user_id=user.id))
+        legacy_json = '[{"word": "She", "accuracy_score": 95.0, "error_type": "None"}]'
+        import sqlite3
+
+        with sqlite3.connect(tmp_path / "test.db") as conn:
+            conn.execute("UPDATE attempts SET words_json = ?", (legacy_json,))
+        loaded = storage.attempts_for_user(user.id)[0]
+        assert loaded.report.words[0].word == "She"
+        assert loaded.report.words[0].phonemes == ()
+
     def test_monthly_audio_seconds_filters_by_month(self, storage):
         user = storage.create_user("u")
         storage.add_attempt(make_attempt(user_id=user.id))  # graded usage, Nov 10

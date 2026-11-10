@@ -242,8 +242,9 @@ async def cb_exercise(call: CallbackQuery, storage: Storage, state: FSMContext) 
     await state.set_state(PracticeStates.waiting_for_voice)
     await state.update_data(exercise_id=exercise.id)
     await call.message.answer(
-        f"<b>{exercise.title}</b>\n\n{exercise.reference_text}\n\n"
-        "🎙 Now record a voice note reading this text."
+        f"<b>{exercise.title}</b>\n\n"
+        "📖 Read this text aloud for assessment, then record and send a voice note:\n\n"
+        f"{exercise.reference_text}"
     )
     await call.answer()
 
@@ -266,7 +267,7 @@ async def receive_custom_text(
     await message.answer(
         "✅ Text accepted:\n"
         + " ".join(message.text.split())
-        + "\n\n🎙 Now record a voice note reading it."
+        + "\n\n📖 Read this text aloud for assessment, then record and send a voice note."
     )
 
 

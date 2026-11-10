@@ -101,7 +101,12 @@ def score_bar(score: float) -> str:
 
 
 def render_report_html(attempt: Attempt) -> str:
-    """Pretty per-word report for Telegram. HTML-escapes user-generated text."""
+    """Full per-word report for Telegram. HTML-escapes user-generated text.
+
+    Same information as Azure's assessment dashboard (overall, four-way
+    breakdown, every word with phoneme scores) in our own style: symbols
+    and bars instead of the donut chart and red/yellow/green palette.
+    """
     report = attempt.report
     score = report.pronunciation_score
     lines = [
@@ -117,22 +122,26 @@ def render_report_html(attempt: Attempt) -> str:
             f" {report.completeness_score:.0f}"
         ),
         f"  Prosody      <code>{score_bar(report.prosody_score)}</code> {report.prosody_score:.0f}",
+        "",
+        "<b>Words</b> (in reading order, with phoneme scores):",
     ]
-    problem_words = [w for w in report.words if w.error_type in MARKS]
-    if problem_words:
-        lines.append("")
-        lines.append("<b>Words to work on:</b>")
-        for word in problem_words:
-            symbol, label = MARKS[word.error_type]
-            escaped = html_module.escape(word.word)
+    for word in report.words:  # original spoken order, not sorted
+        symbol, label = MARKS.get(word.error_type, ("✓", "clean"))
+        lines.append(
+            f"  {symbol} <code>{html_module.escape(word.word)}</code> — {word.accuracy_score:.0f} {label}"
+        )
+        for phoneme, phoneme_score in word.phonemes:
             lines.append(
-                f"  {symbol} <code>{escaped}</code> — {label} ({word.accuracy_score:.0f})"
+                f"      <code>{html_module.escape(phoneme)}</code> {phoneme_score:.0f}"
             )
     lines.append("")
+    has_problem_words = any(w.error_type in MARKS for w in report.words)
     if score < app.WEAK_SCORE_THRESHOLD:
         lines.append("📉 Saved to your mistake bank — practice it again soon.")
-    else:
+    elif not has_problem_words:
         lines.append("🎉 Every word recognized cleanly — nice!")
+    else:
+        lines.append("👍 Good overall score — work on the marked words above.")
     return "\n".join(lines)
 
 

@@ -22,6 +22,9 @@ class WordScore:
     word: str
     accuracy_score: float  # 0..100
     error_type: WordErrorType
+    # (phoneme, accuracy_score) pairs in spoken order; Azure's phoneme-level
+    # detail. Empty when the SDK returns no phoneme data for the word.
+    phonemes: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

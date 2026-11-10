@@ -132,6 +132,9 @@ def _report_to_row(report: ScoreReport) -> dict:
                     "word": w.word,
                     "accuracy_score": w.accuracy_score,
                     "error_type": w.error_type,
+                    "phonemes": [
+                        {"phoneme": p, "accuracy_score": s} for p, s in w.phonemes
+                    ],
                 }
                 for w in report.words
             ]
@@ -145,6 +148,10 @@ def _words_from_json(raw: str) -> tuple[WordScore, ...]:
             word=item["word"],
             accuracy_score=item["accuracy_score"],
             error_type=item["error_type"],
+            phonemes=tuple(
+                (p["phoneme"], p["accuracy_score"])
+                for p in item.get("phonemes", [])  # rows written before phonemes
+            ),
         )
         for item in json.loads(raw)
     )

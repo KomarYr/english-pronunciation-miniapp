@@ -129,6 +129,35 @@ class TestRenderReportHtml:
         assert "<code>sells</code>" in text
         assert "mistake bank" in text
 
+    def test_all_words_in_origin_order(self):
+        words = (
+            WordScore("She", 90.0, "None"),
+            WordScore("jumbles", 40.0, "Mispronunciation"),
+            WordScore("six", 0.0, "Omission"),
+            WordScore("shells", 88.0, "None"),
+        )
+        text = render_report_html(make_attempt(65.0, words))
+        # only look at the word list — the header repeats the recognized text
+        word_section = text.split("reading order", 1)[1]
+        positions = [word_section.index(word.word) for word in words]
+        assert positions == sorted(positions)  # spoken order preserved
+        for word in words:  # every word listed, clean ones included
+            assert word.word in word_section
+        assert "✓" in word_section  # clean words get a symbol too
+
+    def test_phoneme_scores_under_word(self):
+        words = (
+            WordScore(
+                "jumbles",
+                73.0,
+                "Mispronunciation",
+                phonemes=(("ʤ", 84.0), ("ʌ", 61.0)),
+            ),
+        )
+        text = render_report_html(make_attempt(73.0, words))
+        assert "<code>ʤ</code> 84" in text
+        assert "<code>ʌ</code> 61" in text
+
     def test_escapes_user_generated_text(self):
         attempt = make_attempt(
             95.0, (WordScore("oops<script>", 50.0, "Mispronunciation"),)
@@ -142,6 +171,13 @@ class TestRenderReportHtml:
             make_attempt(98.0, (WordScore("Perfect", 99.0, "None"),))
         )
         assert "🎉" in text
+        assert "mistake bank" not in text
+
+    def test_good_score_with_problem_words(self):
+        words = (WordScore("jumbles", 40.0, "Mispronunciation"),)
+        text = render_report_html(make_attempt(85.0, words))
+        assert "👍" in text  # good overall, but honest about marked words
+        assert "🎉" not in text
         assert "mistake bank" not in text
 
 

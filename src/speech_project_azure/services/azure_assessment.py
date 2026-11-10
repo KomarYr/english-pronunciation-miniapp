@@ -61,7 +61,14 @@ class AssessmentCanceled(AssessmentError):
 def _words_from_assessment(pron) -> tuple[WordScore, ...]:
     """pron: speechsdk.PronunciationAssessmentResult (or a duck-typed fake)."""
     return tuple(
-        WordScore(word=w.word, accuracy_score=w.accuracy_score, error_type=w.error_type)
+        WordScore(
+            word=w.word,
+            accuracy_score=w.accuracy_score,
+            error_type=w.error_type,
+            phonemes=tuple(
+                (p.phoneme, p.accuracy_score) for p in getattr(w, "phonemes", ())
+            ),
+        )
         for w in pron.words
     )
 
@@ -113,6 +120,23 @@ def _wav_duration_seconds(path: Path) -> float:
     return frames / rate if rate else 0.0
 
 
+TICKS_PER_SECOND = 10_000_000  # SDK durations are in 100 ns ticks
+
+
+def _speech_duration_seconds(sdk_result, wall_clock: float) -> float:
+    """Actual speech length from the result, when the SDK reports it.
+
+    Mic sessions overcount wall-clock (silence timeout + dead air before
+    reading starts); the recognized result's own duration covers only the
+    speech itself. Falls back to wall-clock when there is no duration
+    (NoMatch / Canceled — Azure listened the whole window, nothing to read).
+    """
+    duration = getattr(sdk_result, "duration", None)
+    if duration and duration > 0:
+        return duration / TICKS_PER_SECOND
+    return wall_clock
+
+
 def assess(
     audio: Path | None,
     reference_text: str,
@@ -123,8 +147,10 @@ def assess(
     audio=None uses the default microphone; otherwise `audio` is a 16 kHz
     mono WAV file (as produced by the Telegram voice-note conversion).
 
-    Returns (report, audio_seconds). audio_seconds is exact for files and
-    wall-clock for the microphone — good enough for the monthly quota.
+    Returns (report, audio_seconds). audio_seconds is exact for files; for
+    the microphone it is the recognized speech length (result.duration),
+    falling back to wall-clock only for silent attempts — silence timeout
+    and dead air are not billed as speech.
     Azure bills every audio transaction, including silent ones: on
     NoSpeechDetected / AssessmentCanceled the exception carries
     audio_seconds and the caller MUST log it via storage.add_audio_usage.
@@ -146,11 +172,8 @@ def assess(
 
     duration_clock = time.monotonic()
     result = recognizer.recognize_once_async().get()
-    audio_seconds = (
-        _wav_duration_seconds(audio)
-        if audio is not None
-        else time.monotonic() - duration_clock
-    )
+    wall_clock = time.monotonic() - duration_clock
+    audio_seconds = _wav_duration_seconds(audio) if audio is not None else wall_clock
 
     if result.reason == speechsdk.ResultReason.NoMatch:
         raise NoSpeechDetected(audio_seconds)
@@ -162,5 +185,8 @@ def assess(
     if result.reason != speechsdk.ResultReason.RecognizedSpeech:
         raise AssessmentError(f"Unexpected recognizer result: {result.reason}")
 
+    mic_seconds = (
+        _speech_duration_seconds(result, wall_clock) if audio is None else audio_seconds
+    )
     pron_result = speechsdk.PronunciationAssessmentResult(result)
-    return _report_from_result(result, pron_result), audio_seconds
+    return _report_from_result(result, pron_result), mic_seconds

@@ -62,8 +62,9 @@ def _countdown() -> None:
 def _practice_flow(
     storage: Storage, user: User, reference_text: str, attempt_fn
 ) -> None:
-    """Common mic flow: countdown → attempt_fn() → render, or explain the error."""
-    print(f"\nReference text:\n  {reference_text}")
+    """Common mic flow: prompt → countdown → attempt_fn() → render or explain."""
+    print("\nRead this text aloud for assessment:")
+    print(f"  {reference_text}")
     _countdown()
     try:
         attempt = attempt_fn()
