@@ -63,6 +63,7 @@ logs/
 # OpenCode (agent config and session files, not project code)
 opencode.jsonc
 .opencode/
+PLAN.md
 
 # macOS
 .DS_Store
