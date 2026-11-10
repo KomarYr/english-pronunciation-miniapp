@@ -53,8 +53,8 @@ class Attempt:
 
     exercise_id is None for free-text attempts; reference_text is always a
     snapshot of what was actually assessed, so history stays truthful even if
-    the exercise catalog changes later. audio_seconds is the source of truth
-    for QuotaTracker.
+    the exercise catalog changes later. audio_seconds is a display stat — the
+    quota source of truth is the audio_usage ledger in storage.
     """
 
     user_id: int

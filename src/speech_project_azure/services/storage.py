@@ -56,9 +56,22 @@ CREATE TABLE IF NOT EXISTS attempts (
     words_json          TEXT NOT NULL
 );
 
+-- Quota ledger: one row per Azure audio transaction, graded or not
+-- (Azure bills silent NoMatch attempts too). The single source of
+-- truth for monthly_audio_seconds.
+CREATE TABLE IF NOT EXISTS audio_usage (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    exercise_id TEXT REFERENCES exercises(id),
+    reason      TEXT NOT NULL CHECK (reason IN ('graded', 'no_speech', 'canceled')),
+    audio_seconds REAL NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_exercise ON attempts(exercise_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_owner ON exercises(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_audio_usage_user ON audio_usage(user_id);
 """
 
 
@@ -303,7 +316,10 @@ class Storage:
     # --- attempts ------------------------------------------------------------
 
     def add_attempt(self, attempt: Attempt) -> Attempt:
-        """Insert and return the attempt with its storage-assigned id."""
+        """Insert and return the attempt with its storage-assigned id.
+
+        Also writes the graded audio usage to the quota ledger.
+        """
         row = _report_to_row(attempt.report)
         with self._connect() as conn:
             cursor = conn.execute(
@@ -330,6 +346,19 @@ class Storage:
                     row["words_json"],
                 ),
             )
+            conn.execute(
+                """
+                INSERT INTO audio_usage
+                    (user_id, exercise_id, reason, audio_seconds, created_at)
+                VALUES (?, ?, 'graded', ?, ?)
+                """,
+                (
+                    attempt.user_id,
+                    attempt.exercise_id,
+                    attempt.audio_seconds,
+                    attempt.created_at.isoformat(),
+                ),
+            )
         return Attempt(
             user_id=attempt.user_id,
             exercise_id=attempt.exercise_id,
@@ -339,6 +368,39 @@ class Storage:
             report=attempt.report,
             id=cursor.lastrowid,
         )
+
+    def add_audio_usage(
+        self,
+        user_id: int,
+        audio_seconds: float,
+        reason: str,
+        created_at: datetime | None = None,
+        exercise_id: str | None = None,
+    ) -> None:
+        """Record a non-graded Azure transaction (no_speech / canceled).
+
+        Call this for every assessment exception that carries audio_seconds:
+        Azure bills silent attempts exactly like graded ones.
+        """
+        if reason not in ("no_speech", "canceled"):
+            raise ValueError(
+                f"reason must be 'no_speech' or 'canceled', got {reason!r}"
+            )
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO audio_usage
+                    (user_id, exercise_id, reason, audio_seconds, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    exercise_id,
+                    reason,
+                    audio_seconds,
+                    (created_at or datetime.now(UTC)).isoformat(),
+                ),
+            )
 
     def attempts_for_user(self, user_id: int, limit: int = 50) -> list[Attempt]:
         with self._connect() as conn:
@@ -355,10 +417,14 @@ class Storage:
         return [self._attempt_from_row(row) for row in rows]
 
     def monthly_audio_seconds(self, month_start: datetime) -> float:
-        """Total uploaded audio since month_start — QuotaTracker's backend."""
+        """Total audio billed since month_start — QuotaTracker's backend.
+
+        Reads the audio_usage ledger: covers graded attempts AND silent
+        no-speech/canceled transactions, because Azure bills them all.
+        """
         with self._connect() as conn:
             (total,) = conn.execute(
-                "SELECT COALESCE(SUM(audio_seconds), 0) FROM attempts WHERE created_at >= ?",
+                "SELECT COALESCE(SUM(audio_seconds), 0) FROM audio_usage WHERE created_at >= ?",
                 (month_start.isoformat(),),
             ).fetchone()
         return float(total)

@@ -148,15 +148,41 @@ class TestAttempts:
 
     def test_monthly_audio_seconds_filters_by_month(self, storage):
         user = storage.create_user("u")
-        storage.add_attempt(make_attempt(user_id=user.id))  # Nov 10
-        storage.add_attempt(
-            make_attempt(user_id=user.id, created_at=datetime(2026, 9, 1, tzinfo=UTC))
-        )  # September
+        storage.add_attempt(make_attempt(user_id=user.id))  # graded usage, Nov 10
+        storage.add_audio_usage(
+            user.id,
+            10.0,
+            reason="no_speech",
+            created_at=datetime(2026, 9, 1, tzinfo=UTC),
+        )  # September — outside November's bucket
         month_start = datetime(2026, 11, 1, tzinfo=UTC)
         assert storage.monthly_audio_seconds(month_start) == pytest.approx(4.2)
         assert storage.monthly_audio_seconds(
             datetime(2026, 1, 1, tzinfo=UTC)
-        ) == pytest.approx(8.4)
+        ) == pytest.approx(14.2)
+
+    def test_graded_attempt_writes_ledger_row(self, storage):
+        user = storage.create_user("u")
+        storage.add_attempt(make_attempt(user_id=user.id))
+        # ledger, not attempts, is the quota source of truth
+        assert storage.monthly_audio_seconds(
+            datetime(2026, 1, 1, tzinfo=UTC)
+        ) == pytest.approx(4.2)
+
+    def test_no_speech_usage_is_counted(self, storage):
+        # Azure bills silent attempts exactly like graded ones
+        user = storage.create_user("u")
+        storage.add_audio_usage(user.id, 2.5, reason="no_speech")
+        assert storage.monthly_audio_seconds(
+            datetime(2026, 1, 1, tzinfo=UTC)
+        ) == pytest.approx(2.5)
+
+    def test_add_audio_usage_rejects_graded_reason(self, storage):
+        user = storage.create_user("u")
+        with pytest.raises(ValueError):
+            storage.add_audio_usage(
+                user.id, 1.0, reason="graded"
+            )  # only via add_attempt
 
     def test_score_stats_weakest_first(self, storage):
         user = storage.create_user("u")
