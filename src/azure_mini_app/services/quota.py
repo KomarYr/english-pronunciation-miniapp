@@ -12,7 +12,7 @@ subscription across all users, so no user_id appears here.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from speech_project_azure.services.storage import Storage
+from azure_mini_app.services.storage import Storage
 
 # Azure F0 free tier: 5 audio-hours per subscription per month.
 MONTHLY_LIMIT_SECONDS = 18_000.0

@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from speech_project_azure import exercises as catalog
-from speech_project_azure.domain import Attempt, ScoreReport, User, WordScore
+from azure_mini_app import exercises as catalog
+from azure_mini_app.domain import Attempt, ScoreReport, User, WordScore
 
 SCHEMA_VERSION = 1
 

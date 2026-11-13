@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from speech_project_azure.services.voice import VoiceConversionError, ogg_to_wav
+from azure_mini_app.services.voice import VoiceConversionError, ogg_to_wav
 
 
 def ffmpeg_available() -> bool:
@@ -67,7 +67,7 @@ class TestFailures:
             raise FileNotFoundError("ffmpeg")
 
         monkeypatch.setattr(
-            "speech_project_azure.services.voice.subprocess.run", raise_not_found
+            "azure_mini_app.services.voice.subprocess.run", raise_not_found
         )
         with pytest.raises(VoiceConversionError, match="ffmpeg not found"):
             ogg_to_wav(tmp_path / "anything.ogg", tmp_path)

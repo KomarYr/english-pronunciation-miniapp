@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aiogram.types import CallbackQuery, Message
 
-from speech_project_azure.interactions import telegram as tg
-from speech_project_azure.interactions.telegram import AllowlistMiddleware, is_allowed
-from speech_project_azure.services.storage import Storage
+from azure_mini_app.interactions import telegram as tg
+from azure_mini_app.interactions.telegram import AllowlistMiddleware, is_allowed
+from azure_mini_app.services.storage import Storage
 
 
 @pytest.fixture()
@@ -20,18 +20,18 @@ class TestAllowlistParsing:
     def test_parse_valid_ids(self, monkeypatch):
         monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", " 123, 456 ,789")
         assert tg.settings.__class__  # settings module imported
-        from speech_project_azure.settings import _parse_allowed_telegram_ids
+        from azure_mini_app.settings import _parse_allowed_telegram_ids
 
         assert _parse_allowed_telegram_ids() == frozenset({123, 456, 789})
 
     def test_parse_empty_allows_nobody(self, monkeypatch):
-        from speech_project_azure.settings import _parse_allowed_telegram_ids
+        from azure_mini_app.settings import _parse_allowed_telegram_ids
 
         monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", "")
         assert _parse_allowed_telegram_ids() == frozenset()
 
     def test_parse_garbage_exits(self, monkeypatch):
-        from speech_project_azure.settings import _parse_allowed_telegram_ids
+        from azure_mini_app.settings import _parse_allowed_telegram_ids
 
         monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", "abc")
         with pytest.raises(SystemExit):

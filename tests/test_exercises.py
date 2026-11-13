@@ -1,6 +1,6 @@
 import pytest
 
-from speech_project_azure.exercises import (
+from azure_mini_app.exercises import (
     CATEGORIES,
     LEVELS,
     categories,

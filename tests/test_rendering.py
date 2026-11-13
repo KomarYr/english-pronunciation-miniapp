@@ -2,8 +2,8 @@
 
 from datetime import UTC, datetime
 
-from speech_project_azure.domain import Attempt, ScoreReport, WordScore
-from speech_project_azure.interactions.rendering import (
+from azure_mini_app.domain import Attempt, ScoreReport, WordScore
+from azure_mini_app.interactions.rendering import (
     format_mistake_bank,
     format_report,
     format_seconds,
@@ -13,8 +13,8 @@ from speech_project_azure.interactions.rendering import (
     render_stats_html,
     score_bar,
 )
-from speech_project_azure.services.quota import MONTHLY_LIMIT_SECONDS, QuotaStatus
-from speech_project_azure.services.storage import UserStats
+from azure_mini_app.services.quota import MONTHLY_LIMIT_SECONDS, QuotaStatus
+from azure_mini_app.services.storage import UserStats
 
 
 def make_attempt(pronunciation: float, words: tuple) -> Attempt:
@@ -70,8 +70,8 @@ class TestFormatMistakeBankPlain:
         assert "empty" in format_mistake_bank([])
 
     def test_ranked(self):
-        from speech_project_azure import exercises as catalog
-        from speech_project_azure.services.storage import ExerciseStat
+        from azure_mini_app import exercises as catalog
+        from azure_mini_app.services.storage import ExerciseStat
 
         stat = ExerciseStat(
             exercise=catalog.get_exercise("s-vs-sh-sentence-1"),
@@ -186,8 +186,8 @@ class TestRenderMistakesHtml:
         assert "empty" in render_mistakes_html([])
 
     def test_lists_titles_with_bars(self):
-        from speech_project_azure import exercises as catalog
-        from speech_project_azure.services.storage import ExerciseStat
+        from azure_mini_app import exercises as catalog
+        from azure_mini_app.services.storage import ExerciseStat
 
         stat = ExerciseStat(
             exercise=catalog.get_exercise("s-vs-sh-sentence-1"),

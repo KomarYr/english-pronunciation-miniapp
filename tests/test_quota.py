@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from speech_project_azure.domain import Attempt, ScoreReport
-from speech_project_azure.services import quota
-from speech_project_azure.services.quota import (
+from azure_mini_app.domain import Attempt, ScoreReport
+from azure_mini_app.services import quota
+from azure_mini_app.services.quota import (
     MONTHLY_LIMIT_SECONDS,
     QuotaExceededError,
     ensure_can_assess,
     month_start,
     quota_status,
 )
-from speech_project_azure.services.storage import Storage
+from azure_mini_app.services.storage import Storage
 
 NOV_10 = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 

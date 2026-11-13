@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from speech_project_azure.services.azure_assessment import (
+from azure_mini_app.services.azure_assessment import (
     AssessmentCanceled,
     AssessmentError,
     NoSpeechDetected,

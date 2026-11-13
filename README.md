@@ -39,10 +39,10 @@ SERVICE_REGION=your-region            # e.g. westeurope
 EOF
 
 # 3. Run the trainer
-uv run speech-project-azure
+uv run azure-mini-app
 ```
 
-There is also `uv run speech-project-azure-demo` — the original minimal
+There is also `uv run azure-mini-app-demo` — the original minimal
 microphone demo, kept for debugging audio setup.
 
 ## Telegram bot
@@ -62,7 +62,7 @@ profiles, same quota. Telegram login matches on `telegram_id`.
 
 3. `uv sync` (needs [ffmpeg](https://ffmpeg.org) on the system for
    voice-note conversion — `sudo apt install ffmpeg` on Ubuntu)
-4. Run it: `uv run speech-project-telegram` (long polling, no public URL needed)
+4. Run it: `uv run azure-mini-app-telegram` (long polling, no public URL needed)
 
 ### Adding users (closed by default)
 
@@ -131,12 +131,12 @@ One core with thin interaction adapters — the CLI and the Telegram bot
 only render; all rules live in `app.py`:
 
 ```
-src/speech_project_azure/
+src/azure_mini_app/
 ├── settings.py               # .env credentials, language, guardrail limits, bot token
 ├── exercises.py              # built-in catalog (dataclass + seed data)
 ├── domain.py                 # User, Attempt, ScoreReport, WordScore — pure stdlib
 ├── app.py                    # use-cases: quota gate, guardrails, mistake bank
-├── recognizer.py             # legacy mic demo (speech-project-azure-demo)
+├── recognizer.py             # legacy mic demo (azure-mini-app-demo)
 ├── services/
 │   ├── azure_assessment.py   # the ONLY module importing the Speech SDK
 │   ├── storage.py            # SQLite: users/exercises/attempts + audio_usage ledger

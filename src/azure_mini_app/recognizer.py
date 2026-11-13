@@ -1,6 +1,6 @@
 import azure.cognitiveservices.speech as speechsdk
 
-from speech_project_azure.settings import (
+from azure_mini_app.settings import (
     _require_azure_credentials,
     language,
     speech_endpoint,

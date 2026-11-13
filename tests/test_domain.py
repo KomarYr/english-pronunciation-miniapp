@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from speech_project_azure.domain import (
+from azure_mini_app.domain import (
     Attempt,
     ScoreReport,
     TextValidationError,

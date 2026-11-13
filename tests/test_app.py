@@ -7,17 +7,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from speech_project_azure import app
-from speech_project_azure.domain import ScoreReport, TextValidationError
-from speech_project_azure.services.azure_assessment import (
+from azure_mini_app import app
+from azure_mini_app.domain import ScoreReport, TextValidationError
+from azure_mini_app.services.azure_assessment import (
     AssessmentCanceled,
     NoSpeechDetected,
 )
-from speech_project_azure.services.quota import (
+from azure_mini_app.services.quota import (
     MONTHLY_LIMIT_SECONDS,
     QuotaExceededError,
 )
-from speech_project_azure.services.storage import Storage
+from azure_mini_app.services.storage import Storage
 
 NOW = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
@@ -34,7 +34,7 @@ def user(storage):
 
 @pytest.fixture()
 def exercise():
-    from speech_project_azure import exercises as catalog
+    from azure_mini_app import exercises as catalog
 
     return catalog.get_exercise("s-vs-sh-sentence-1")
 

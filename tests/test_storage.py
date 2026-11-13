@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from speech_project_azure import exercises as catalog
-from speech_project_azure.domain import Attempt, ScoreReport, WordScore
-from speech_project_azure.services.storage import Storage
+from azure_mini_app import exercises as catalog
+from azure_mini_app.domain import Attempt, ScoreReport, WordScore
+from azure_mini_app.services.storage import Storage
 
 
 def make_report(overrides: dict | None = None) -> ScoreReport:

@@ -1,2 +1,0 @@
-def main() -> None:
-    print("Hello from speech-project-azure!")

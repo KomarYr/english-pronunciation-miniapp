@@ -12,12 +12,12 @@ from pathlib import Path
 from langdetect import DetectorFactory, detect
 from langdetect.lang_detect_exception import LangDetectException
 
-from speech_project_azure import exercises as catalog
-from speech_project_azure import settings
-from speech_project_azure.domain import Attempt, TextValidationError, User
-from speech_project_azure.services import azure_assessment, quota
-from speech_project_azure.services.quota import QuotaStatus
-from speech_project_azure.services.storage import ExerciseStat, Storage, UserStats
+from azure_mini_app import exercises as catalog
+from azure_mini_app import settings
+from azure_mini_app.domain import Attempt, TextValidationError, User
+from azure_mini_app.services import azure_assessment, quota
+from azure_mini_app.services.quota import QuotaStatus
+from azure_mini_app.services.storage import ExerciseStat, Storage, UserStats
 
 # Average pronunciation score below which an exercise lands in the mistake bank.
 WEAK_SCORE_THRESHOLD = 70.0

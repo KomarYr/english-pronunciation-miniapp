@@ -738,7 +738,7 @@ wheels = [
 ]
 
 [[package]]
-name = "speech-project-azure"
+name = "azure-mini-app"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

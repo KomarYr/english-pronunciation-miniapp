@@ -15,8 +15,8 @@ from pathlib import Path
 
 import azure.cognitiveservices.speech as speechsdk
 
-from speech_project_azure.domain import ScoreReport, WordScore
-from speech_project_azure.settings import (
+from azure_mini_app.domain import ScoreReport, WordScore
+from azure_mini_app.settings import (
     language,
     speech_endpoint,
     speech_key,

@@ -1,5 +1,5 @@
 [project]
-name = "speech-project-azure"
+name = "azure-mini-app"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -15,9 +15,9 @@ dependencies = [
 ]
 
 [project.scripts]
-speech-project-azure = "speech_project_azure.interactions.cli:main"
-speech-project-telegram = "speech_project_azure.interactions.telegram:main"
-speech-project-azure-demo = "speech_project_azure.recognizer:main"
+azure-mini-app = "azure_mini_app.interactions.cli:main"
+azure-mini-app-telegram = "azure_mini_app.interactions.telegram:main"
+azure-mini-app-demo = "azure_mini_app.recognizer:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

@@ -5,20 +5,20 @@ Thin adapter over app.py: reads input, calls use-cases, renders results
 mistake bank) live in app.py.
 """
 
-from speech_project_azure import app, settings
-from speech_project_azure.domain import TextValidationError, User
-from speech_project_azure.interactions.rendering import (
+from azure_mini_app import app, settings
+from azure_mini_app.domain import TextValidationError, User
+from azure_mini_app.interactions.rendering import (
     format_mistake_bank,
     format_report,
     format_stats,
 )
-from speech_project_azure.services.azure_assessment import (
+from azure_mini_app.services.azure_assessment import (
     AssessmentCanceled,
     AssessmentError,
     NoSpeechDetected,
 )
-from speech_project_azure.services.quota import QuotaExceededError
-from speech_project_azure.services.storage import Storage
+from azure_mini_app.services.quota import QuotaExceededError
+from azure_mini_app.services.storage import Storage
 
 DB_PATH = settings.db_path
 

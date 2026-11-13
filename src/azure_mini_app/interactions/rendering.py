@@ -6,10 +6,10 @@ no network, no storage.
 
 import html as html_module
 
-from speech_project_azure import app
-from speech_project_azure.domain import Attempt
-from speech_project_azure.services.quota import QuotaStatus
-from speech_project_azure.services.storage import ExerciseStat, UserStats
+from azure_mini_app import app
+from azure_mini_app.domain import Attempt
+from azure_mini_app.services.quota import QuotaStatus
+from azure_mini_app.services.storage import ExerciseStat, UserStats
 
 MARKS = {
     "Mispronunciation": ("✗", "said wrong"),
