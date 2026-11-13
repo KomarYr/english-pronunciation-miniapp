@@ -1,7 +1,9 @@
-"""Voice-note conversion: Telegram OGG/Opus → 16 kHz mono WAV for Azure.
+"""Audio conversion: any browser/Telegram container → 16 kHz mono WAV.
 
 The only place that shells out to ffmpeg. Kept small and typed so the
-Telegram adapter can render failures as friendly messages.
+interaction adapters can render failures as friendly messages. ffmpeg
+detects the container itself (OGG/Opus from Telegram, WebM/MediaRecorder
+from the Mini App), so callers never special-case the format.
 """
 
 import subprocess
@@ -12,7 +14,7 @@ class VoiceConversionError(Exception):
     """ffmpeg is missing, timed out, or rejected the file."""
 
 
-def ogg_to_wav(source: Path, target_dir: Path) -> Path:
+def to_wav(source: Path, target_dir: Path) -> Path:
     """Convert an audio file to 16 kHz mono WAV (Azure's expected format).
 
     Returns the path of the converted file inside target_dir. Raises

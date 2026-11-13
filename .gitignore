@@ -64,6 +64,8 @@ logs/
 opencode.jsonc
 .opencode/
 PLAN.md
+.agents
+skills*
 
 # Local SQLite database
 data/

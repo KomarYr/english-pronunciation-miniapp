@@ -42,7 +42,7 @@ from azure_mini_app.services.azure_assessment import (
 )
 from azure_mini_app.services.quota import QuotaExceededError
 from azure_mini_app.services.storage import Storage
-from azure_mini_app.services.voice import VoiceConversionError, ogg_to_wav
+from azure_mini_app.services.voice import VoiceConversionError, to_wav
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +296,7 @@ async def receive_voice(
         await bot.download_file(file.file_path, ogg_path)
 
         try:
-            wav_path = await asyncio.to_thread(ogg_to_wav, ogg_path, Path(tmp))
+            wav_path = await asyncio.to_thread(to_wav, ogg_path, Path(tmp))
             if "custom_text" in data:
                 attempt = await asyncio.to_thread(
                     app.assess_custom_text, storage, user, data["custom_text"], wav_path
