@@ -1,4 +1,4 @@
-"""Telegram bot tests: allowlist, middleware, keyboards — no real Telegram."""
+"""Telegram launcher tests: allowlist, commands, refusals — no real Telegram."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -7,19 +7,13 @@ import pytest
 from aiogram.types import CallbackQuery, Message
 
 from azure_mini_app.interactions import telegram as tg
-from azure_mini_app.interactions.telegram import AllowlistMiddleware, is_allowed
-from azure_mini_app.services.storage import Storage
-
-
-@pytest.fixture()
-def storage(tmp_path):
-    return Storage(tmp_path / "tg-test.db")
+from azure_mini_app.interactions.miniapp.auth import is_allowed
+from azure_mini_app.interactions.telegram import AllowlistMiddleware
 
 
 class TestAllowlistParsing:
     def test_parse_valid_ids(self, monkeypatch):
         monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", " 123, 456 ,789")
-        assert tg.settings.__class__  # settings module imported
         from azure_mini_app.settings import _parse_allowed_telegram_ids
 
         assert _parse_allowed_telegram_ids() == frozenset({123, 456, 789})
@@ -50,7 +44,7 @@ class TestAllowlistMiddleware:
     async def test_allowed_user_passes(self, handler, allowed_42):
         user = SimpleNamespace(id=42)
         message = MagicMock(spec=Message)
-        message.text = "/stats"
+        message.text = "hi"
         data = {"event_from_user": user}
         result = await AllowlistMiddleware()(handler, message, data)
         handler.assert_awaited_once_with(message, data)
@@ -97,37 +91,49 @@ class TestIsAllowed:
         assert is_allowed(next(iter(tg.settings.allowed_telegram_ids), 0)) or True
 
 
-class TestKeyboards:
-    def test_categories_keyboard_lists_sorted_categories(self, storage):
-        user = storage.get_or_create_user("u")
-        keyboard = tg._categories_keyboard(storage, user)
-        labels = [btn.text for row in keyboard.inline_keyboard for btn in row]
-        assert labels == sorted(labels)
-
-    def test_exercises_keyboard_has_back_button(self, storage):
-        user = storage.get_or_create_user("u")
-        keyboard = tg._exercises_keyboard(storage, user, "minimal pairs")
-        labels = [btn.text for row in keyboard.inline_keyboard for btn in row]
-        assert "« Categories" in labels
-        callback_data = [
-            btn.callback_data for row in keyboard.inline_keyboard for btn in row
-        ]
-        assert "cats:" in callback_data
-
-    def test_exercise_callbacks_reference_real_ids(self, storage):
-        user = storage.get_or_create_user("u")
-        keyboard = tg._exercises_keyboard(storage, user, "minimal pairs")
-        for row in keyboard.inline_keyboard:
-            for btn in row:
-                if btn.callback_data and btn.callback_data.startswith("ex:"):
-                    assert storage.get_exercise(btn.callback_data.removeprefix("ex:"))
+def _message_mock(spec: str) -> MagicMock:
+    message = MagicMock(spec=Message)
+    message.text = spec
+    message.answer = AsyncMock()
+    return message
 
 
-class TestResolveUser:
-    def test_matches_by_telegram_id(self, storage):
-        tg_user = SimpleNamespace(id=777, full_name="Test User")
-        first = tg._resolve_user(storage, tg_user)
-        second = tg._resolve_user(storage, tg_user)
-        assert first.id == second.id
-        assert first.telegram_id == 777
-        assert storage.get_user_by_telegram_id(777) == first
+class TestLauncher:
+    async def test_start_sends_greeting(self):
+        message = _message_mock("/start")
+        await tg.cmd_start(message)
+        text = message.answer.call_args.args[0]
+        assert "Mini App" in text
+
+    async def test_start_keyboard_without_public_url_is_none(self, monkeypatch):
+        monkeypatch.setattr(tg.settings, "miniapp_public_url", None)
+        message = _message_mock("/start")
+        await tg.cmd_start(message)
+        assert message.answer.call_args.kwargs["reply_markup"] is None
+
+    async def test_start_keyboard_with_public_url_opens_web_app(self, monkeypatch):
+        monkeypatch.setattr(tg.settings, "miniapp_public_url", "https://t.example/app")
+        message = _message_mock("/start")
+        await tg.cmd_start(message)
+        keyboard = message.answer.call_args.kwargs["reply_markup"]
+        assert keyboard.inline_keyboard[0][0].web_app.url == "https://t.example/app"
+
+    async def test_id_reports_allowlist_state(self, monkeypatch):
+        monkeypatch.setattr(tg.settings, "allowed_telegram_ids", frozenset({777}))
+        message = _message_mock("/id")
+        message.from_user = SimpleNamespace(id=777)
+        await tg.cmd_id(message)
+        assert "777" in message.answer.call_args.args[0]
+        assert "allowed" in message.answer.call_args.args[0]
+
+    async def test_voice_note_is_refused_with_app_button(self):
+        message = _message_mock("voice")
+        await tg.voice_note_refused(message)
+        text = message.answer.call_args.args[0]
+        assert "Mini App" in text
+
+    async def test_unknown_text_falls_back_to_launcher(self):
+        message = _message_mock("anything")
+        await tg.fallback_to_launcher(message)
+        text = message.answer.call_args.args[0]
+        assert "Mini App" in text
