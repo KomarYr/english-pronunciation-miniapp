@@ -54,7 +54,12 @@ def create_app() -> FastAPI:
     async def lifespan(application: FastAPI):
         if application.state.bot is not None and settings.miniapp_public_url:
             url = settings.miniapp_public_url.rstrip("/") + _webhook_path()
-            await application.state.bot.set_webhook(url)
+            # secret_token makes Telegram send X-Telegram-Bot-Api-Secret-Token
+            # on every update — the webhook route below rejects requests
+            # without it, so registration without the secret 403s everything.
+            await application.state.bot.set_webhook(
+                url, secret_token=settings.telegram_webhook_secret
+            )
             logger.info("Telegram webhook registered at %s", url)
         yield
 
@@ -76,11 +81,18 @@ def create_app() -> FastAPI:
     @application.post(_webhook_path())
     async def telegram_webhook(request: Request) -> PlainTextResponse:
         expected = settings.telegram_webhook_secret
-        if (
-            expected
-            and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected
-        ):
-            return PlainTextResponse("forbidden", status_code=403)
+        if expected:
+            provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+            if provided != expected:
+                # Never log the secret itself; say which side went wrong.
+                if provided is None:
+                    logger.warning(
+                        "Webhook update rejected: secret header missing — "
+                        "was the webhook registered without secret_token?"
+                    )
+                else:
+                    logger.warning("Webhook update rejected: secret header mismatch")
+                return PlainTextResponse("forbidden", status_code=403)
         bot = application.state.bot
         dispatcher = application.state.dispatcher
         if bot is None or dispatcher is None:  # pragma: no cover — guarded above
@@ -91,6 +103,10 @@ def create_app() -> FastAPI:
         except ValueError:
             return PlainTextResponse("bad update payload", status_code=400)
         await dispatcher.feed_update(bot, update)
+        return PlainTextResponse("OK")
+
+    @application.get("/health", include_in_schema=False)
+    async def health() -> PlainTextResponse:
         return PlainTextResponse("OK")
 
     if FRONTEND_DIST.is_dir():
