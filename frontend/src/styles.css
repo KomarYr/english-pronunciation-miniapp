@@ -1,0 +1,308 @@
+/* Plain CSS, driven by Telegram theme colors with dark-mode fallbacks.
+   Variable names follow Telegram's themeParams keys (--tg-*). */
+
+:root {
+  --tg-bg-color: #17212b;
+  --tg-secondary-bg-color: #0e1621;
+  --tg-text-color: #ffffff;
+  --tg-hint-color: #8a9aa8;
+  --tg-link-color: #5eb5f7;
+  --tg-button-color: #5288c1;
+  --tg-button-text-color: #ffffff;
+  --good: #4ec26a;
+  --okay: #f5a623;
+  --bad: #ec5f5f;
+  --card-radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--tg-secondary-bg-color);
+  color: var(--tg-text-color);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  min-height: 100vh;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* --- header & tabs --------------------------------------------------- */
+
+.header {
+  padding: 12px 16px 8px;
+  background: var(--tg-bg-color);
+  border-bottom: 1px solid color-mix(in srgb, var(--tg-hint-color) 25%, transparent);
+}
+.header h1 { font-size: 1.15rem; margin: 0; }
+.header .muted { margin: 2px 0 0; font-size: 0.8rem; }
+
+.tab-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  background: var(--tg-bg-color);
+  border-top: 1px solid color-mix(in srgb, var(--tg-hint-color) 25%, transparent);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab-bar .tab {
+  flex: 1;
+  padding: 12px 4px;
+  background: none;
+  border: none;
+  color: var(--tg-hint-color);
+  font-size: 0.85rem;
+}
+.tab-bar .tab.active { color: var(--tg-text-color); font-weight: 600; }
+
+/* While the record flow runs, the UI is modal: no tab switching. */
+body.recording .tab-bar { display: none; }
+
+/* --- content ---------------------------------------------------------- */
+
+.content {
+  flex: 1;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.content h2 { font-size: 1.3rem; margin: 4px 0; }
+
+.card {
+  background: var(--tg-bg-color);
+  border-radius: var(--card-radius);
+  padding: 14px;
+}
+.card.center { text-align: center; }
+.card-title { margin: 0 0 10px; font-size: 0.95rem; }
+
+.muted { color: var(--tg-hint-color); }
+
+/* --- catalog ----------------------------------------------------------- */
+
+.catalog { display: flex; flex-direction: column; gap: 8px; }
+
+.category {
+  background: var(--tg-bg-color);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+.category summary {
+  padding: 12px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.category summary::-webkit-details-marker { display: none; }
+.category .count { color: var(--tg-hint-color); font-weight: 400; }
+
+.exercise-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--tg-hint-color) 20%, transparent);
+  color: var(--tg-text-color);
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.exercise-row:active { background: color-mix(in srgb, var(--tg-button-color) 20%, transparent); }
+.exercise-row .exercise-meta { color: var(--tg-hint-color); font-size: 0.8rem; white-space: nowrap; }
+.exercise-row.mistake-row .exercise-meta { color: var(--bad); }
+
+.custom-text-card { display: flex; flex-direction: column; gap: 10px; }
+.custom-text-form { display: flex; flex-direction: column; gap: 10px; }
+.custom-text-form textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--tg-hint-color) 40%, transparent);
+  background: var(--tg-secondary-bg-color);
+  color: var(--tg-text-color);
+  padding: 10px;
+  font: inherit;
+}
+
+/* --- buttons ------------------------------------------------------------ */
+
+button.primary, button.secondary {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+button.primary { background: var(--tg-button-color); color: var(--tg-button-text-color); }
+button.secondary {
+  background: color-mix(in srgb, var(--tg-button-color) 22%, transparent);
+  color: var(--tg-text-color);
+}
+button.wide { width: 100%; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.back-link {
+  background: none;
+  border: none;
+  color: var(--tg-link-color);
+  font-size: 0.95rem;
+  padding: 0;
+  margin: 0 0 4px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+/* --- exercise view & record flow ---------------------------------------- */
+
+.exercise-view { display: flex; flex-direction: column; gap: 12px; }
+.exercise-heading { margin: 0 0 6px; }
+.reference-text {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  margin: 0;
+}
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  background: color-mix(in srgb, var(--tg-button-color) 25%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+}
+
+.record-status {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--tg-hint-color);
+  font-size: 0.9rem;
+}
+.countdown { font-size: 2rem; color: var(--tg-text-color); font-weight: 700; }
+.pulse-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+
+.record-button {
+  width: 100%;
+  padding: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 14px;
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
+  cursor: pointer;
+}
+.exercise-view[data-record-state="recording"] .record-button { background: var(--bad); }
+.exercise-view[data-record-state="assessing"] .record-button { opacity: 0.6; }
+
+/* --- report -------------------------------------------------------------- */
+
+.report-view { display: flex; flex-direction: column; gap: 12px; }
+.recognized { font-size: 1.05rem; margin: 4px 0 0; }
+.hero-score { margin-top: 10px; }
+.hero-number { font-size: 3rem; font-weight: 700; }
+.hero-number.good { color: var(--good); }
+.hero-number.okay { color: var(--okay); }
+.hero-number.bad { color: var(--bad); }
+.hero-label { display: block; color: var(--tg-hint-color); font-size: 0.85rem; }
+
+.breakdown { display: flex; flex-direction: column; gap: 10px; }
+.breakdown-row { display: grid; grid-template-columns: 110px 1fr 34px; align-items: center; gap: 8px; }
+.breakdown-label { color: var(--tg-hint-color); font-size: 0.85rem; }
+.breakdown-value { text-align: right; font-size: 0.9rem; }
+
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tg-hint-color) 30%, transparent);
+  overflow: hidden;
+}
+.bar.big { height: 12px; }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--tg-button-color); }
+.bar-fill.good { background: var(--good); }
+.bar-fill.okay { background: var(--okay); }
+.bar-fill.bad { background: var(--bad); }
+
+.word-list { list-style: none; margin: 0; padding: 0; }
+.word-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--tg-hint-color) 18%, transparent);
+}
+.word-row:first-child { border-top: none; }
+.word-row .word { font-size: 1.05rem; }
+.word-row .phonemes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.phoneme { font-size: 0.75rem; }
+.word-score { font-size: 0.9rem; color: var(--tg-hint-color); }
+.word-score.good { color: var(--good); }
+.word-score.bad { color: var(--bad); }
+
+.badge {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+}
+.badge-ok { background: color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+.badge-bad { background: color-mix(in srgb, var(--bad) 25%, transparent); color: var(--bad); }
+.badge-skipped { background: color-mix(in srgb, var(--okay) 25%, transparent); color: var(--okay); }
+.badge-extra { background: color-mix(in srgb, var(--tg-hint-color) 30%, transparent); color: var(--tg-hint-color); }
+
+.report-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* --- stats ------------------------------------------------------------------ */
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--tg-hint-color) 18%, transparent);
+  font-size: 0.95rem;
+}
+.stat-row:first-of-type { border-top: none; }
+.stat-label { color: var(--tg-hint-color); }
+.quota-text { margin: 10px 0 4px; font-size: 0.9rem; }
+.quota-warning { color: var(--okay); font-size: 0.9rem; margin: 4px 0 0; }
+
+/* --- toast --------------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translate(-50%, -200%);
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  border: 1px solid color-mix(in srgb, var(--tg-hint-color) 35%, transparent);
+  border-radius: 12px;
+  padding: 10px 16px;
+  max-width: 90vw;
+  font-size: 0.9rem;
+  transition: transform 0.25s ease;
+  z-index: 10;
+}
+.toast.visible { transform: translate(-50%, 0); }
+.toast.error { border-color: var(--bad); }

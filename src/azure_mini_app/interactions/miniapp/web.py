@@ -38,7 +38,7 @@ _PLACEHOLDER = """<!doctype html>
 code{background:#f4f4f4;padding:2px 6px;border-radius:4px}</style></head>
 <body><div><h1>azure-mini-app</h1>
 <p>The Mini App frontend is not built yet.</p>
-<p>Run <code>uv run azure-mini-app-frontend-build</code> in the project root.</p>
+<p>Run: <code>cd frontend && npm install && npm run build</code></p>
 </div></body></html>"""
 
 

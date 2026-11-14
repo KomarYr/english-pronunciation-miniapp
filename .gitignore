@@ -67,6 +67,10 @@ PLAN.md
 .agents
 skills*
 
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
 # Local SQLite database
 data/
 
