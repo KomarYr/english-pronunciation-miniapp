@@ -65,11 +65,6 @@ The chat surface after its demotion: it opens the Mini App and onboards
 strangers, and does nothing else.
 _Avoid_: bot
 
-**Demo**:
-A legacy microphone-only surface for debugging audio setup, not for
-daily practice.
-_Avoid_: recognizer
-
 ### Budget
 
 **Audio budget**:

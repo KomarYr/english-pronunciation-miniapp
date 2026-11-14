@@ -1,7 +1,8 @@
 """Use-cases gluing the services together: the app's business rules.
 
-Sync functions, no printing and no SDK types — interaction adapters (CLI,
-Telegram) call these and render the results. Typed errors are part of the
+Sync functions, no printing and no SDK types — interaction adapters (the
+Mini App, the launcher) call these and render the results. Typed errors
+are part of the
 contract: callers catch NoSpeechDetected / AssessmentCanceled /
 QuotaExceededError / TextValidationError and turn them into messages.
 """

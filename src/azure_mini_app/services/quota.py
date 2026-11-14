@@ -3,7 +3,7 @@
 All the numbers come from storage.monthly_audio_seconds (the audio_usage
 ledger); this module adds only the policy: the limit, the warn threshold,
 and the go / no-go decision. It never prints or sends anything — rendering
-the status is the CLI's / Telegram's job.
+the status is the adapters' job.
 
 Subscription-wide by design: Azure F0 bills the 5-hour budget per
 subscription across all users, so no user_id appears here.

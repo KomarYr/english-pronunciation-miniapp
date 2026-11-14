@@ -117,7 +117,7 @@ def validate_dev_mode() -> None:
 
 
 def resolve_user(storage: Storage, identity: MiniAppUser) -> User:
-    """Same DB as the CLI: login matches on telegram_id; allowlist enforced."""
+    """Login matches on telegram_id; the allowlist is enforced here."""
     if not is_allowed(identity.telegram_id):
         raise NotAllowedError(
             f"Telegram ID {identity.telegram_id} is not on the allowlist."

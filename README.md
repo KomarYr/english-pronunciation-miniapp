@@ -45,27 +45,19 @@ TELEGRAM_WEBHOOK_SECRET=some-random-string
 ALLOWED_TELEGRAM_IDS=                 # comma-separated numeric IDs; empty = nobody
 EOF
 
-# 3. Expose the web server with Tailscale Funnel (local dev)
-#    The node URL is https://<node>.<tailnet>.ts.net — `tailscale status --self`
-#    or `tailscale dns status` shows it. Funnel must be enabled once in the
-#    Tailscale admin console (Logs & settings → Funnel server).
-sudo tailscale funnel --bg --https=443 http://127.0.0.1:8000
+# 3. Expose the web server (local dev): any HTTPS tunnel works,
+#    e.g. tailscale funnel or cloudflared
+tailscale funnel --bg --https=443 http://localhost:8000
 
 # 4. Put that URL into .env so the bot registers its webhook there
-echo "MINIAPP_PUBLIC_URL=https://<node>.<tailnet>.ts.net" >> .env
+echo "MINIAPP_PUBLIC_URL=https://<your-tunnel-host>" >> .env
 
-# 5. Run the server — Mini App + API + Telegram webhook in one process.
-#    It registers the webhook on startup.
+# 5. Run the server — Mini App + API + Telegram webhook in one process
 uv run azure-mini-app-web
 ```
 
 Open the bot in Telegram, press the **Menu button** (or send `/start`
 and use the inline button) — the Mini App opens.
-
-Sanity checks while developing: `curl http://127.0.0.1:8000/health`
-(app is up) and
-`curl https://<node>.<tailnet>.ts.net/health` (funnel → app path).
-Turn the funnel off when done: `sudo tailscale funnel off`.
 
 **Development without Telegram**: set `MINIAPP_DEV_MODE=1` and open
 `http://127.0.0.1:8000` in a plain browser; requests run as
@@ -83,9 +75,6 @@ New users: send `/id` to the bot, then the owner appends the ID to
 `ALLOWED_TELEGRAM_IDS` in `.env` and restarts the server. Nobody else
 gets anything — voice notes included; they are politely refused with an
 open-app button.
-
-Run `uv run azure-mini-app-telegram` only when you want long polling
-without the web server (never together with `azure-mini-app-web`).
 
 ## Using the Mini App
 
@@ -112,13 +101,6 @@ Words to work on:
   audio budget with a ⚠ warning at 80%; at 100% practice is blocked
   until the 1st of the next month.
 
-### Microphone note (WSL2)
-
-The mic works through WSLg's PulseAudio. If the CLI demo hears nothing,
-check `~/.asoundrc` routes ALSA to Pulse (this project was set up on
-WSL2 and verified end-to-end there). In the Mini App, the phone's mic is
-used — it just works.
-
 ## For developers
 
 Domain language lives in `GLOSSARY.md`; architectural decisions in
@@ -126,8 +108,8 @@ Domain language lives in `GLOSSARY.md`; architectural decisions in
 
 ### Architecture
 
-One core with thin interaction adapters — the Mini App, the CLI and the
-chat launcher only render; all rules live in `app.py`:
+One core with thin interaction adapters — the Mini App and the chat
+launcher only render; all rules live in `app.py`:
 
 ```
 src/azure_mini_app/
@@ -135,7 +117,6 @@ src/azure_mini_app/
 ├── exercises.py              # built-in catalog (dataclass + seed data)
 ├── domain.py                 # User, Attempt, ScoreReport, WordScore — pure stdlib
 ├── app.py                    # use-cases: quota gate, guardrails, mistake bank
-├── recognizer.py             # legacy mic demo (azure-mini-app-demo)
 ├── services/
 │   ├── azure_assessment.py   # the ONLY module importing the Speech SDK
 │   ├── storage.py            # SQLite: users/exercises/attempts + audio_usage ledger
@@ -146,9 +127,7 @@ src/azure_mini_app/
     │   ├── web.py            # one process, three surfaces (ADR-0003)
     │   ├── auth.py           # initData HMAC validation + allowlist
     │   └── api.py            # one route per use-case, typed error codes
-    ├── cli.py                # terminal menu → microphone → report
-    ├── telegram.py           # launcher: /start, /id, voice-note refusal
-    └── rendering.py          # plain-text report formatters (CLI)
+    └── telegram.py           # launcher: /start, /id, voice-note refusal
 frontend/                     # vanilla TS + Vite Mini App (ADR-0004)
 ├── src/api.ts                # typed fetch wrapper (tma initData header)
 ├── src/recorder.ts           # MediaRecorder: WebM/Opus, 120 s cap
@@ -205,6 +184,6 @@ fakes.
 
 - [x] M1 — package layout, catalog, domain model
 - [x] M2 — Telegram: voice notes → WAV → same use-cases, HTML reports
-- [x] M3 — storage, quota ledger, Azure assessment, use-cases, CLI
+- [x] M3 — storage, quota ledger, Azure assessment, use-cases
 - [x] M4 — Telegram Mini App replaces chat interactions (ADR-0001)
 - [ ] M6 — production deployment (VPS/Caddy or Azure Container Apps)

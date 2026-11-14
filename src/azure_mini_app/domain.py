@@ -42,7 +42,7 @@ class ScoreReport:
 
 @dataclass(frozen=True, slots=True)
 class User:
-    """A learner. CLI users have telegram_id=None; Telegram login matches on it."""
+    """A learner. Login matches on telegram_id (Mini App and launcher)."""
 
     display_name: str
     id: int | None = None  # assigned by storage on insert
