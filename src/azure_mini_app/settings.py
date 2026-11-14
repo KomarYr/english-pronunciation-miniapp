@@ -33,7 +33,7 @@ def _int_env(name: str, default: int) -> int:
         sys.exit(f"{name} must be an integer, got {raw!r}")
 
 
-# Mini App web server (uvicorn). MINIAPP_PUBLIC_URL (e.g. a cloudflared
+# Mini App web server (uvicorn). MINIAPP_PUBLIC_URL (e.g. a tailscale
 # tunnel) triggers set_webhook on startup — the bot's polling replacement.
 miniapp_host = environ.get("MINIAPP_HOST", "127.0.0.1")
 miniapp_port = _int_env("MINIAPP_PORT", 8000)

@@ -45,18 +45,27 @@ TELEGRAM_WEBHOOK_SECRET=some-random-string
 ALLOWED_TELEGRAM_IDS=                 # comma-separated numeric IDs; empty = nobody
 EOF
 
-# 3. Expose the web server (local dev): any HTTPS tunnel works
-cloudflared tunnel --url http://127.0.0.1:8000   # prints a trycloudflare.com URL
+# 3. Expose the web server with Tailscale Funnel (local dev)
+#    The node URL is https://<node>.<tailnet>.ts.net — `tailscale status --self`
+#    or `tailscale dns status` shows it. Funnel must be enabled once in the
+#    Tailscale admin console (Logs & settings → Funnel server).
+sudo tailscale funnel --bg --https=443 http://127.0.0.1:8000
 
 # 4. Put that URL into .env so the bot registers its webhook there
-echo "MINIAPP_PUBLIC_URL=https://…trycloudflare.com" >> .env
+echo "MINIAPP_PUBLIC_URL=https://<node>.<tailnet>.ts.net" >> .env
 
-# 5. Run the server — Mini App + API + Telegram webhook in one process
+# 5. Run the server — Mini App + API + Telegram webhook in one process.
+#    It registers the webhook on startup.
 uv run azure-mini-app-web
 ```
 
 Open the bot in Telegram, press the **Menu button** (or send `/start`
 and use the inline button) — the Mini App opens.
+
+Sanity checks while developing: `curl http://127.0.0.1:8000/health`
+(app is up) and
+`curl https://<node>.<tailnet>.ts.net/health` (funnel → app path).
+Turn the funnel off when done: `sudo tailscale funnel off`.
 
 **Development without Telegram**: set `MINIAPP_DEV_MODE=1` and open
 `http://127.0.0.1:8000` in a plain browser; requests run as
