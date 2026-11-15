@@ -189,4 +189,18 @@ def assess(
         _speech_duration_seconds(result, wall_clock) if audio is None else audio_seconds
     )
     pron_result = speechsdk.PronunciationAssessmentResult(result)
+    # Azure can return RecognizedSpeech with *no* assessment scores when
+    # the audio is empty/inaudible yet not silent enough for NoMatch —
+    # the SDK's float type hints lie. Surface that as the typed
+    # no-speech error instead of a None-scored report (which the
+    # attempts table's NOT NULL score columns rightly reject).
+    scored = (
+        pron_result.accuracy_score,
+        pron_result.fluency_score,
+        pron_result.completeness_score,
+        pron_result.prosody_score,
+        pron_result.pronunciation_score,
+    )
+    if any(score is None for score in scored):
+        raise NoSpeechDetected(mic_seconds)
     return _report_from_result(result, pron_result), mic_seconds
