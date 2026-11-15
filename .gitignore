@@ -77,5 +77,14 @@ data/
 # macOS
 .DS_Store
 
+# Teach workspace (agent lessons & references)
+/MISSION.md
+/NOTES.md
+/RESOURCES.md
+/assets/
+/lessons/
+/reference/
+/learning-records/
+
 # OS / misc
 Thumbs.db
