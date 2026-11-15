@@ -24,7 +24,7 @@
   --good: #4ec26a;
   --okay: #f5a623;
   --bad: #ec5f5f;
-  --card-radius: 14px;
+  --card-radius: 18px;
 }
 
 * { box-sizing: border-box; }
@@ -80,10 +80,10 @@ body.recording .tab-bar { display: none; }
 
 .content {
   flex: 1;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  padding: 32px 32px calc(24px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
 }
 .content h2 { font-size: 1.3rem; margin: 4px 0; }
 
@@ -233,12 +233,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .report-view { display: flex; flex-direction: column; gap: 12px; }
 .recognized { font-size: 1.05rem; margin: 4px 0 0; }
 .hero-score { margin-top: 10px; }
-.spinner-wrap {
-  position: relative;
-  width: 144px; height: 144px;
-  display: inline-flex;
-  align-items: stretch;
-  justify-content: center;
+.spinner-wrap { 
+  position: relative; 
+  width: 144px; height: 144px; 
+  display: inline-flex; 
+  align-items: stretch; 
+  justify-content: center; 
   flex-direction: column; }
 .spinner {
   position: absolute;
@@ -270,9 +270,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .hero-label { display: block; color: var(--tg-hint-color); font-size: 0.85rem; }
 
 .breakdown { display: flex; flex-direction: column; gap: 10px; }
-.breakdown-row { display: grid; grid-template-columns: 110px 1fr 34px; align-items: center; gap: 8px; }
-.breakdown-label { color: var(--tg-hint-color); font-size: 0.85rem; }
-.breakdown-value { text-align: right; font-size: 0.9rem; }
+.breakdown-row { display: grid; grid-template-columns: 1fr; align-items: center; gap: 1px; }
+.breakdown-label { text-align: center; color: var(--tg-hint-color); font-size: 1.2rem; }
+.breakdown-value { text-align: right; font-size: 1.2rem; }
 
 .bar {
   height: 8px;
@@ -296,8 +296,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   border-top: 1px solid color-mix(in srgb, var(--tg-hint-color) 18%, transparent);
 }
 .word-row:first-child { border-top: none; }
-.word-row .word { font-size: 1.05rem; }
-.word-row .phonemes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.word-row .word { font-size: 1.2rem; }
+.word-row .phonemes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .chip.phoneme { font-size: 0.75rem; }
 .word-score { font-size: 0.9rem; color: var(--tg-hint-color); }
 .word-score.good { color: var(--good); }
