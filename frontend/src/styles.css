@@ -1,6 +1,18 @@
 /* Plain CSS, driven by Telegram theme colors with dark-mode fallbacks.
    Variable names follow Telegram's themeParams keys (--tg-*). */
 
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --mid-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 :root {
   --tg-bg-color: #17212b;
   --tg-secondary-bg-color: #0e1621;
@@ -221,7 +233,37 @@ button:disabled { opacity: 0.5; cursor: default; }
 .report-view { display: flex; flex-direction: column; gap: 12px; }
 .recognized { font-size: 1.05rem; margin: 4px 0 0; }
 .hero-score { margin-top: 10px; }
-.hero-number { font-size: 3rem; font-weight: 700; }
+.spinner-wrap {
+  position: relative;
+  width: 144px; height: 144px;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: center;
+  flex-direction: column; }
+.spinner {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+      var(--bad) 0deg,
+      var(--okay) var(--mid-angle),
+      var(--good) var(--angle),
+      transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 0);
+  animation: spinner 1.2s linear forwards;
+
+}
+
+@keyframes spinner {
+  from { --angle: 0deg; --mid-angle: 0deg; }
+  to {
+    --angle: var(--target-angle, 360deg);
+    --mid-angle: calc(var(--target-angle, 360deg) / 2);
+  }
+}
+
+.hero-number { font-size: 4rem; font-weight: 700; }
 .hero-number.good { color: var(--good); }
 .hero-number.okay { color: var(--okay); }
 .hero-number.bad { color: var(--bad); }

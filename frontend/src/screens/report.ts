@@ -58,6 +58,18 @@ export function renderReport(
     ["Completeness", report.completeness_score],
     ["Prosody", report.prosody_score],
   ];
+  const targetAngle = (report.pronunciation_score / 100) * 360;
+  // Set --target-angle on the element itself (never a document query:
+  // the view isn't attached yet). It inherits down to .spinner, where
+  // the keyframes read it as the animation's end value.
+  const spinnerWrap = el(
+    "div",
+    { class: "hero-score spinner-wrap" },
+    el("div", { class: "spinner" }),
+    el("span", { class: `hero-number ${scoreColor(report.pronunciation_score)}` }, String(Math.round(report.pronunciation_score))),
+    el("span", { class: "hero-label", text: "Pronunciation" }),
+  );
+  spinnerWrap.style.setProperty("--target-angle", `${targetAngle}deg`);
 
   const view = el(
     "section",
@@ -67,12 +79,7 @@ export function renderReport(
       { class: "card center" },
       el("p", { class: "muted", text: "You said" }),
       el("p", { class: "recognized", text: report.recognized_text }),
-      el(
-        "div",
-        { class: "hero-score" },
-        el("span", { class: `hero-number ${scoreColor(report.pronunciation_score)}` }, String(Math.round(report.pronunciation_score))),
-        el("span", { class: "hero-label", text: "Pronunciation" }),
-      ),
+      spinnerWrap,
     ),
     el(
       "div",
