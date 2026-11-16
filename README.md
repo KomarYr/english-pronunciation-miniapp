@@ -36,6 +36,8 @@ uv sync
 cd frontend && npm install && npm run build && cd ..
 
 # 2. Add your Azure Speech credentials and the bot token to .env
+#    (copy the template and fill in your values)
+cp .env.example .env
 
 # 3. Expose the web server (local dev): any HTTPS tunnel works,
 #    e.g. tailscale funnel or cloudflared
@@ -179,3 +181,7 @@ fakes.
 - [x] M3 — storage, quota ledger, Azure assessment, use-cases
 - [x] M4 — Telegram Mini App replaces chat interactions (ADR-0001)
 - [ ] M6 — production deployment (VPS/Caddy or Azure Container Apps)
+
+## License
+
+[MIT](LICENSE)
