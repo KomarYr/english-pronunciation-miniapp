@@ -319,7 +319,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .hero-number.good { color: var(--good); }
 .hero-number.okay { color: var(--okay); }
 .hero-number.bad { color: var(--bad); }
-.hero-label { display: block; color: var(--tg-hint-color); font-size: 0.85rem; }
+.hero-label { display: block; font-size: 0.85rem; }
+.hero-label.good { color: var(--good); }
+.hero-label.okay { color: var(--okay); }
+.hero-label.bad { color: var(--bad); }
 
 .breakdown { display: flex; flex-direction: column; gap: 10px; }
 .breakdown-row { display: grid; grid-template-columns: 1fr; align-items: center; gap: 1px; }
