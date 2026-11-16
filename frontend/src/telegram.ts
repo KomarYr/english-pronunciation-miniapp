@@ -1,9 +1,14 @@
-/* Telegram bridge: init, initData capture, theme, back button.
+/* Telegram bridge: init, initData capture, back button.
 
 SDK v3 exposes standalone signal-backed functions. Every call is
 defensive: in a plain browser (dev mode) these throw or report as
 "not available", and we degrade to browser behavior instead of crashing
-so the backend can authenticate via MINIAPP_DEV_MODE. */
+so the backend can authenticate via MINIAPP_DEV_MODE.
+
+Deliberately NOT called: miniApp.bindCssVars() and
+themeParams.bindCssVars(). They write --tg-bg-color etc. inline on
+<html>, overriding the app's own palette with the user's Telegram
+theme (decided against on 2026-11-16 — see styles.css). */
 
 import {
   backButton,
@@ -25,25 +30,12 @@ function attempt(action: () => unknown): void {
   }
 }
 
-/** Mount an SDK component, then run `next` once the mount resolves.
-    mount() is async — calling follow-ups like bindCssVars() before it
-    resolves makes them throw "component is unmounted" (silently
-    swallowed), so the SDK ends up doing nothing. */
-function mountThen(component: { mount: () => unknown }, next: () => void): void {
-  attempt(() => {
-    Promise.resolve(component.mount()).then(
-      () => attempt(next),
-      () => { /* plain browser or unsupported surface */ },
-    );
-  });
-}
-
 /** Call once at boot. Safe in a plain browser. */
 export function initTelegram(): void {
   attempt(init);
-  mountThen(miniApp, () => miniApp.bindCssVars());
+  attempt(() => void miniApp.mount());
   attempt(() => void miniApp.ready());
-  mountThen(themeParams, () => themeParams.bindCssVars());
+  attempt(() => themeParams.mount());
   attempt(() => backButton.mount());
   attempt(initData.restore);
   const raw = captureSignal(() => initData.raw());

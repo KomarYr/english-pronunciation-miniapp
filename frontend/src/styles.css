@@ -1,5 +1,7 @@
-/* Plain CSS, driven by Telegram theme colors with dark-mode fallbacks.
-   Variable names follow Telegram's themeParams keys (--tg-*). */
+/* App-owned dark palette (decision 2026-11-16): the SDK's CSS-var
+   binders are disabled in telegram.ts, so Telegram theme params cannot
+   override these brand colors. The --tg-* names are kept only because
+   they mirror Telegram's params — read them as "our palette tokens". */
 
 @property --angle {
   syntax: "<angle>";
