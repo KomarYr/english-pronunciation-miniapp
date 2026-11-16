@@ -235,11 +235,16 @@ button:disabled { opacity: 0.5; cursor: default; }
 .hero-score { margin-top: 10px; }
 .spinner-wrap { 
   position: relative; 
-  width: 144px; height: 144px; 
+  width: 144px; 
+  height: 144px; 
   display: inline-flex; 
   align-items: stretch; 
   justify-content: center; 
-  flex-direction: column; }
+  flex-direction: column; 
+  overflow: visible;
+  margin: 24px auto;
+  animation: glow-pulse 1.8s ease-in-out infinite
+}
 .spinner {
   position: absolute;
   inset: 0;
@@ -249,9 +254,8 @@ button:disabled { opacity: 0.5; cursor: default; }
       var(--okay) var(--mid-angle),
       var(--good) var(--angle),
       transparent 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 0);
   mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 0);
-  animation: spinner 1.2s linear forwards;
+  animation: spinner 1.2s linear forwards, glow-pulse 1.8s ease-in-out infinite;
 
 }
 
@@ -260,6 +264,22 @@ button:disabled { opacity: 0.5; cursor: default; }
   to {
     --angle: var(--target-angle, 360deg);
     --mid-angle: calc(var(--target-angle, 360deg) / 2);
+  }
+}
+.glow {
+  /* Use drop-shadow to follow the ring shape */
+  filter: drop-shadow(0 0 8px var(--tg-button-color));
+  animation: glow-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 5px var(--tg-button-color));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 35px var(--tg-button-color));
   }
 }
 

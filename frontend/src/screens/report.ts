@@ -64,7 +64,7 @@ export function renderReport(
   // the keyframes read it as the animation's end value.
   const spinnerWrap = el(
     "div",
-    { class: "hero-score spinner-wrap" },
+    { class: "hero-score spinner-wrap glow" },
     el("div", { class: "spinner" }),
     el("span", { class: `hero-number ${scoreColor(report.pronunciation_score)}` }, String(Math.round(report.pronunciation_score))),
     el("span", { class: "hero-label", text: "Pronunciation" }),
