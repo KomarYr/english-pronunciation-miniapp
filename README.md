@@ -36,20 +36,12 @@ uv sync
 cd frontend && npm install && npm run build && cd ..
 
 # 2. Add your Azure Speech credentials and the bot token to .env
-cat > .env <<'EOF'
-SUBSCRIPTION_KEY=your-azure-speech-key
-SERVICE_REGION=your-region            # e.g. westeurope
-# SERVICE_ENDPOINT=...                # optional, overrides SERVICE_REGION
-TELEGRAM_BOT_TOKEN=123456:ABC-your-token
-TELEGRAM_WEBHOOK_SECRET=some-random-string
-ALLOWED_TELEGRAM_IDS=                 # comma-separated numeric IDs; empty = nobody
-EOF
 
 # 3. Expose the web server (local dev): any HTTPS tunnel works,
 #    e.g. tailscale funnel or cloudflared
-tailscale funnel --bg --https=443 http://localhost:8000
+sudo tailscale funnel --bg --https=443 http://localhost:8000
 
-# 4. Put that URL into .env so the bot registers its webhook there
+# 4. Put URL from tailscale funnel output into .env so the bot registers its webhook there
 echo "MINIAPP_PUBLIC_URL=https://<your-tunnel-host>" >> .env
 
 # 5. Run the server — Mini App + API + Telegram webhook in one process
