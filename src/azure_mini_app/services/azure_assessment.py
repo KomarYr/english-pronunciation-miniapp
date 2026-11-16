@@ -12,6 +12,7 @@ fakes instead of real SDK objects.
 import time
 import wave
 from pathlib import Path
+from typing import cast
 
 import azure.cognitiveservices.speech as speechsdk
 
@@ -171,7 +172,14 @@ def assess(
     pronunciation_config.apply_to(recognizer)
 
     duration_clock = time.monotonic()
-    result = recognizer.recognize_once_async().get()
+    # The SDK's ResultFuture.get() is untyped and its implementation ends
+    # in `... else None`, so checkers infer `Unknown | None` and flag every
+    # result.* access. recognize_once() always yields a
+    # SpeechRecognitionResult — say so once, at this boundary.
+    result = cast(
+        speechsdk.SpeechRecognitionResult,
+        recognizer.recognize_once_async().get(),
+    )
     wall_clock = time.monotonic() - duration_clock
     audio_seconds = _wav_duration_seconds(audio) if audio is not None else wall_clock
 

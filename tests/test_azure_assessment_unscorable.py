@@ -36,6 +36,7 @@ def fake_speechsdk_with_none_scores(result_text: str) -> SimpleNamespace:
         SpeechConfig=lambda subscription, region: SimpleNamespace(
             set_property=lambda *args: None
         ),
+        SpeechRecognitionResult=type("SpeechRecognitionResult", (), {}),
         SpeechRecognizer=make_recognizer,
         ResultReason=SimpleNamespace(
             RecognizedSpeech="recognized", NoMatch="nomatch", Canceled="canceled"
