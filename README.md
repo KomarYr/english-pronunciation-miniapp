@@ -72,16 +72,20 @@ open-app button.
 
 ## Using the Mini App
 
-Pick **Practice** → category → exercise, wait for the 3-2-1 countdown,
-and read the reference text aloud. The report shows:
+Pick **Practice** → category → exercise, tap **🎤 Start recording**,
+read the reference text aloud (up to 2 minutes), and tap **⏹ Stop**.
+The report shows:
 
 ```
 You said: She sells six silver shells.
-Pronunciation: 89/100
-  accuracy      92.0
-  fluency       88.0
-  completeness 100.0
-  prosody       75.0
+
+      89
+     Score            ← big number, colored by score
+
+Accuracy      92
+Fluency       88
+Completeness 100
+Prosody       75
 
 Words to work on:
   shells          ✗ said wrong    60
@@ -180,7 +184,7 @@ fakes.
 - [x] M2 — Telegram: voice notes → WAV → same use-cases, HTML reports
 - [x] M3 — storage, quota ledger, Azure assessment, use-cases
 - [x] M4 — Telegram Mini App replaces chat interactions (ADR-0001)
-- [ ] M6 — production deployment (VPS/Caddy or Azure Container Apps)
+- [ ] M5 — production deployment (VPS/Caddy or Azure Container Apps)
 
 ## License
 
