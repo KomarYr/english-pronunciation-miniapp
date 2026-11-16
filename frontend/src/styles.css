@@ -206,7 +206,6 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: var(--tg-hint-color);
   font-size: 0.9rem;
 }
-.countdown { font-size: 2rem; color: var(--tg-text-color); font-weight: 700; }
 .pulse-dot {
   width: 12px;
   height: 12px;
@@ -227,7 +226,23 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: var(--tg-button-text-color);
   cursor: pointer;
 }
-.exercise-view[data-record-state="recording"] .record-button { background: var(--bad); }
+.record-button {
+  width: 100%;
+  padding: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 14px;
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
+  cursor: pointer;
+  animation: glow-pulse-shadow 1.8s ease-in-out infinite;
+}
+/* Recording overrides the idle blue pulse with a red one. */
+.exercise-view[data-record-state="recording"] .record-button {
+  background: var(--bad);
+  --glow-color: var(--bad);
+}
 .exercise-view[data-record-state="assessing"] .record-button { opacity: 0.6; }
 
 /* --- report -------------------------------------------------------------- */
@@ -292,11 +307,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 
   0%,
   100% {
-    filter: drop-shadow(0 0 5px var(--tg-button-color));
+    filter: drop-shadow(0 0 5px var(--glow-color, var(--tg-button-color)));
   }
 
   50% {
-    filter: drop-shadow(0 0 35px var(--tg-button-color));
+    filter: drop-shadow(0 0 35px var(--glow-color, var(--tg-button-color)));
   }
 }
 

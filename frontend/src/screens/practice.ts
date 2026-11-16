@@ -87,7 +87,7 @@ export async function renderPracticeList(target: HTMLElement): Promise<void> {
   const listRoot = el("div", { class: "catalog" });
   for (const [category, items] of byCategory) {
     const details = el("details", { class: "category" });
-    const summary = el("summary", {}, categoryLabel(category), el("span", { class: "count" }, String(items.length)));
+    const summary = el("summary", {}, categoryLabel(category), el("span", { class: "count" }, `${items.length} exercise${items.length === 1 ? "" : "s"}`));
     details.append(summary);
     for (const exercise of items) {
       const row = el(
@@ -144,7 +144,7 @@ export async function openExercise(target: HTMLElement, exercise: Exercise): Pro
   });
   target.replaceChildren(view);
 
-  const setState = (state: "idle" | "countdown" | "recording" | "assessing") => {
+  const setState = (state: "idle" | "recording" | "assessing") => {
     view.dataset.recordState = state;
     // The flow is modal: hide the tab bar until it finishes or fails.
     document.body.classList.toggle("recording", state !== "idle");
@@ -152,8 +152,6 @@ export async function openExercise(target: HTMLElement, exercise: Exercise): Pro
     recordButton.disabled = state !== "idle" && state !== "recording";
     if (state === "idle") {
       recordButton.textContent = "🎤 Start recording";
-    } else if (state === "countdown") {
-      recordButton.textContent = "…";
     } else if (state === "recording") {
       recordButton.textContent = "⏹ Stop";
       recordButton.disabled = false;
@@ -166,18 +164,16 @@ export async function openExercise(target: HTMLElement, exercise: Exercise): Pro
     }
   };
 
+  setState("idle");
+
   recordButton.addEventListener("click", async () => {
-    if (flow.recorder !== null && flow.recorder.recording) {
-      await flow.recorder.stop();
+    if (flow.recorder !== null) {
+      // While recording a second tap stops; while the recorder is still
+      // spinning up it is ignored (the guard keeps out double starts).
+      if (flow.recorder.recording) await flow.recorder.stop();
       return;
     }
-    setState("countdown");
-    for (const count of [3, 2, 1]) {
-      if (flow.abandoned) return;
-      status.replaceChildren(el("span", { class: "countdown", text: String(count) }));
-      await new Promise((resolve) => setTimeout(resolve, 700));
-    }
-    if (flow.abandoned) return;
+    setState("recording");
     const recorder = new Recorder();
     flow.recorder = recorder;
     try {
@@ -187,7 +183,7 @@ export async function openExercise(target: HTMLElement, exercise: Exercise): Pro
       toast("Microphone unavailable — allow access and try again.", "error");
       return;
     }
-    setState("recording");
+    if (flow.abandoned) return;
     const recording = await recorder.wait();
     if (flow.abandoned || recording === null) return;
     setState("assessing");
