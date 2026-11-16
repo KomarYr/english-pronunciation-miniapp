@@ -67,7 +67,7 @@ export function renderReport(
     { class: "hero-score spinner-wrap" },
     el("div", { class: "spinner" }),
     el("span", { class: `hero-number ${scoreColor(report.pronunciation_score)}` }, String(Math.round(report.pronunciation_score))),
-    el("span", { class: "hero-label", text: "Pronunciation" }),
+    el("span", { class: `hero-label ${scoreColor(report.pronunciation_score)}`, text: "Score" }),
   );
   spinnerWrap.style.setProperty("--target-angle", `${targetAngle}deg`);
 
