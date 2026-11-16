@@ -25,14 +25,25 @@ function attempt(action: () => unknown): void {
   }
 }
 
+/** Mount an SDK component, then run `next` once the mount resolves.
+    mount() is async — calling follow-ups like bindCssVars() before it
+    resolves makes them throw "component is unmounted" (silently
+    swallowed), so the SDK ends up doing nothing. */
+function mountThen(component: { mount: () => unknown }, next: () => void): void {
+  attempt(() => {
+    Promise.resolve(component.mount()).then(
+      () => attempt(next),
+      () => { /* plain browser or unsupported surface */ },
+    );
+  });
+}
+
 /** Call once at boot. Safe in a plain browser. */
 export function initTelegram(): void {
   attempt(init);
-  attempt(() => void miniApp.mount());
-  attempt(() => miniApp.bindCssVars());
+  mountThen(miniApp, () => miniApp.bindCssVars());
   attempt(() => void miniApp.ready());
-  attempt(() => themeParams.mount());
-  attempt(() => themeParams.bindCssVars());
+  mountThen(themeParams, () => themeParams.bindCssVars());
   attempt(() => backButton.mount());
   attempt(initData.restore);
   const raw = captureSignal(() => initData.raw());
