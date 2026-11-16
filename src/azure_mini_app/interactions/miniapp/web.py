@@ -68,6 +68,21 @@ def create_app() -> FastAPI:
 
     application.include_router(api.router)
 
+    @application.middleware("http")
+    async def frontend_cache_headers(request: Request, call_next):
+        """Cache rules for the built frontend. The entry HTML must never be
+        cached: Vite fingerprints asset URLs, so a webview holding a stale
+        index.html keeps running the previous build even after a redeploy.
+        Hashed /assets/ files are immutable, so they may cache forever."""
+        response = await call_next(request)
+        if request.method == "GET":
+            path = request.url.path
+            if path in ("/", "/index.html"):
+                response.headers["Cache-Control"] = "no-store"
+            elif path.startswith("/assets/"):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
     if settings.telegram_bot_token:
         application.state.bot = Bot(
             token=settings.telegram_bot_token,
