@@ -233,17 +233,27 @@ button:disabled { opacity: 0.5; cursor: default; }
 .report-view { display: flex; flex-direction: column; gap: 12px; }
 .recognized { font-size: 1.05rem; margin: 4px 0 0; }
 .hero-score { margin-top: 10px; }
-.spinner-wrap { 
-  position: relative; 
-  width: 144px; 
-  height: 144px; 
-  display: inline-flex; 
-  align-items: stretch; 
-  justify-content: center; 
-  flex-direction: column; 
+.spinner-wrap {
+  position: relative;
+  width: 144px;
+  height: 144px;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: center;
+  flex-direction: column;
   overflow: visible;
   margin: 24px auto;
-  animation: glow-pulse 1.8s ease-in-out infinite
+}
+/* The glow lives on its own layer: a transparent circle drawn by
+   box-shadow. Shadows render outside the element, so they never touch
+   the hero number's pixels, and no filter flattens the subtree. */
+.spinner-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: glow-pulse 1.8s ease-in-out infinite;
 }
 .spinner {
   position: absolute;
@@ -255,8 +265,7 @@ button:disabled { opacity: 0.5; cursor: default; }
       var(--good) var(--angle),
       transparent 0);
   mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 0);
-  animation: spinner 1.2s linear forwards, glow-pulse 1.8s ease-in-out infinite;
-
+  animation: spinner 1.2s linear forwards;
 }
 
 @keyframes spinner {
@@ -266,20 +275,15 @@ button:disabled { opacity: 0.5; cursor: default; }
     --mid-angle: calc(var(--target-angle, 360deg) / 2);
   }
 }
-.glow {
-  /* Use drop-shadow to follow the ring shape */
-  filter: drop-shadow(0 0 8px var(--tg-button-color));
-  animation: glow-pulse 1.8s ease-in-out infinite;
-}
 
 @keyframes glow-pulse {
   0%,
   100% {
-    filter: drop-shadow(0 0 5px var(--tg-button-color));
+    box-shadow: 0 0 6px 2px color-mix(in srgb, var(--tg-button-color) 40%, transparent);
   }
 
   50% {
-    filter: drop-shadow(0 0 35px var(--tg-button-color));
+    box-shadow: 0 0 32px 8px color-mix(in srgb, var(--tg-button-color) 40%, transparent);
   }
 }
 

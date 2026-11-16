@@ -88,3 +88,4 @@ data/
 
 # OS / misc
 Thumbs.db
+.playwright-mcp/
