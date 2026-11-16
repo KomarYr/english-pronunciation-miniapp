@@ -80,7 +80,9 @@ def create_app() -> FastAPI:
             if path in ("/", "/index.html"):
                 response.headers["Cache-Control"] = "no-store"
             elif path.startswith("/assets/"):
-                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                response.headers["Cache-Control"] = (
+                    "public, max-age=31536000, immutable"
+                )
         return response
 
     if settings.telegram_bot_token:

@@ -22,9 +22,7 @@ from azure_mini_app.services.azure_assessment import NoSpeechDetected
 def fake_speechsdk_with_none_scores(result_text: str) -> SimpleNamespace:
     """SDK stub whose pronunciation result has None scores, as Azure
     returns for recognized-but-unscorable audio."""
-    fake_result = SimpleNamespace(
-        text=result_text, duration=0, reason="recognized"
-    )
+    fake_result = SimpleNamespace(text=result_text, duration=0, reason="recognized")
 
     def make_recognizer(**kwargs):
         return SimpleNamespace(
@@ -32,7 +30,9 @@ def fake_speechsdk_with_none_scores(result_text: str) -> SimpleNamespace:
         )
 
     return SimpleNamespace(
-        PropertyId=SimpleNamespace(SpeechServiceConnection_EndSilenceTimeoutMs="end-silence"),
+        PropertyId=SimpleNamespace(
+            SpeechServiceConnection_EndSilenceTimeoutMs="end-silence"
+        ),
         SpeechConfig=lambda subscription, region: SimpleNamespace(
             set_property=lambda *args: None
         ),
