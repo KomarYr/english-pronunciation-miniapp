@@ -48,10 +48,23 @@ _Avoid_: weak list, error bank
 A person practicing the language, identified by their Telegram ID.
 _Avoid_: account, profile, customer
 
-**Allowlist**:
-The closed list of Telegram IDs permitted to use the tool. Nobody is
-allowed until their ID is on it.
-_Avoid_: whitelist, access list
+**Access entry**:
+One row per Telegram ID in the database: the person's word on whether
+they may use the tool. Created pending automatically; only an Admin
+moves it to active. The sole source of truth after the first run.
+_Avoid_: allowlist, whitelist, account
+
+**Status**:
+An Access entry's state: `pending`, `active` or `blocked`. Pending
+means waiting for an Admin's approval; blocked means refused on both
+surfaces, immediately and reversibly.
+_Avoid_: permission, flag
+
+**Admin**:
+A person whose Access entry carries the admin role: they manage access
+from the chat (`/requests`, `/approve`, `/block`, `/users`). Seeded
+once from `ADMIN_TELEGRAM_IDS` on the first run.
+_Avoid_: owner, moderator
 
 ### Surfaces
 
@@ -61,8 +74,9 @@ for all user interactions — practice, custom texts, mistake bank, stats.
 _Avoid_: webapp, web view, client
 
 **Launcher**:
-The chat surface after its demotion: it opens the Mini App and onboards
-strangers, and does nothing else.
+The chat surface after its demotion: it opens the Mini App, onboards
+strangers and carries the admin access commands (ADR-0005 supersedes
+ADR-0001's "nothing else" clause on that one point).
 _Avoid_: bot
 
 ### Budget

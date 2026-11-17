@@ -84,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_exercises_owner ON exercises(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_audio_usage_user ON audio_usage(user_id);
 
 -- Access control (schema v2): one row per Telegram ID. The database is
--- the source of truth; the env allowlist only seeds it once (see
+-- the source of truth; ALLOWED_TELEGRAM_IDS only seeds it once (see
 -- _seed_access). Closed by default: nobody gets in without an entry.
 CREATE TABLE IF NOT EXISTS access (
     telegram_id INTEGER PRIMARY KEY,
@@ -297,6 +297,16 @@ class Storage:
                         "set in .env — access data may have been wiped. "
                         "Nobody can use the Mini App until an entry exists."
                     )
+        # Ticket 07: the legacy env var is bootstrap-only. It seeds the
+        # access table once (first run above) and never gates anything —
+        # both processes open Storage at startup, so this is the startup
+        # warning the spec asks for.
+        if settings.allowed_telegram_ids:
+            logger.warning(
+                "ALLOWED_TELEGRAM_IDS is set: it only seeds the access "
+                "table once at first run; the live gate is the database. "
+                "The setting can be removed after the first start."
+            )
 
     def _seed_builtin_exercises(self, conn: sqlite3.Connection) -> None:
         for e in catalog.list_exercises():
@@ -321,7 +331,7 @@ class Storage:
             )
 
     def _seed_access(self, conn: sqlite3.Connection) -> None:
-        """One-time bootstrap: the env allowlist becomes the database.
+        """One-time bootstrap: the seed entries become the database.
 
         Every legacy ALLOWED_TELEGRAM_IDS entry becomes `active`; every
         ADMIN_TELEGRAM_IDS entry becomes `active` with role `admin` (an

@@ -48,8 +48,8 @@ def _webhook_path() -> str:
 
 
 def create_app() -> FastAPI:
-    validate_dev_mode()
     storage = Storage(settings.db_path)
+    validate_dev_mode(storage)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):

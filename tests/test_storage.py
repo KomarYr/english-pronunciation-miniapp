@@ -275,6 +275,26 @@ class TestAccessEntries:
         with pytest.raises(KeyError):
             storage.set_access_role(42, "admin")
 
+    def test_rejects_unknown_status_and_role(self, storage):
+        user = storage.create_user("ada", telegram_id=42)
+        with pytest.raises(ValueError):
+            storage.ensure_access(42, user.id, status="banned")
+        storage.ensure_access(42, user.id)
+        with pytest.raises(ValueError):
+            storage.set_access_role(42, "superuser")
+
+    def test_noop_change_writes_nothing(self, storage, tmp_path):
+        # setting a field to its current value is not a change
+        user = storage.create_user("ada", telegram_id=42)
+        entry = storage.ensure_access(42, user.id, status="active")
+        before = _audit_events(tmp_path / "test.db")
+        again = storage.set_access_status(42, "active", actor_id=user.id)
+        assert again == entry
+        assert again.updated_at == entry.updated_at
+        assert _audit_events(tmp_path / "test.db") == before
+        storage.set_access_role(42, "user", actor_id=user.id)
+        assert _audit_events(tmp_path / "test.db") == before
+
 
 class TestAuthDenialAudit:
     """Ticket 06: rejected authentication lands in the audit table."""
@@ -314,25 +334,40 @@ class TestAuthDenialAudit:
             "1.1.1.1",
         ]
 
-    def test_rejects_unknown_status_and_role(self, storage):
-        user = storage.create_user("ada", telegram_id=42)
-        with pytest.raises(ValueError):
-            storage.ensure_access(42, user.id, status="banned")
-        storage.ensure_access(42, user.id)
-        with pytest.raises(ValueError):
-            storage.set_access_role(42, "superuser")
 
-    def test_noop_change_writes_nothing(self, storage, tmp_path):
-        # setting a field to its current value is not a change
-        user = storage.create_user("ada", telegram_id=42)
-        entry = storage.ensure_access(42, user.id, status="active")
-        before = _audit_events(tmp_path / "test.db")
-        again = storage.set_access_status(42, "active", actor_id=user.id)
-        assert again == entry
-        assert again.updated_at == entry.updated_at
-        assert _audit_events(tmp_path / "test.db") == before
-        storage.set_access_role(42, "user", actor_id=user.id)
-        assert _audit_events(tmp_path / "test.db") == before
+class TestLegacyEnvWarning:
+    """Ticket 07: ALLOWED_TELEGRAM_IDS is bootstrap-only — its presence
+    warns at startup, it never gates anything."""
+
+    def test_fresh_database_seeds_once_and_warns(self, tmp_path, monkeypatch, caplog):
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        with caplog.at_level("WARNING"):
+            storage = Storage(tmp_path / "legacy.db")
+        assert storage.get_access(42).status == "active"  # it did seed
+        assert "ALLOWED_TELEGRAM_IDS" in caplog.text
+        assert "seed" in caplog.text
+
+    def test_already_migrated_database_warns_without_seeding(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        db = tmp_path / "legacy-migrated.db"
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        Storage(db)  # first open: nothing seeded
+
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
+        with caplog.at_level("WARNING"):
+            reopened = Storage(db)
+        assert reopened.get_access(42) is None  # a v2 database ignores env
+        assert "ALLOWED_TELEGRAM_IDS" in caplog.text
+
+    def test_absent_ids_stay_quiet(self, tmp_path, monkeypatch, caplog):
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        with caplog.at_level("WARNING"):
+            Storage(tmp_path / "quiet.db")
+        assert "ALLOWED_TELEGRAM_IDS" not in caplog.text
 
 
 class TestAccessListing:

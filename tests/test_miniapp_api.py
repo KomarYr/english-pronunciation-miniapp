@@ -104,16 +104,18 @@ class TestAuthWiring:
         assert response.status_code == 401
         assert response.json()["detail"]["code"] == "auth_required"
 
-    def test_stranger_auto_registers_pending(self, monkeypatch, tmp_path):
-        # Nothing seeded: the dev user is a stranger to the database, so
-        # the closed-by-default lifecycle registers them as pending.
+    def test_dev_mode_without_active_entry_refuses_to_start(
+        self, monkeypatch, tmp_path
+    ):
+        # Ticket 07: dev mode never weakens the gate. A dev user with no
+        # active access entry stops startup instead of serving requests —
+        # the stranger-registers-pending flow (ticket 03) is pinned in
+        # test_miniapp_access.py with real initData.
         make_app(monkeypatch, tmp_path, allowed=frozenset())
         from azure_mini_app.interactions.miniapp.web import create_app
 
-        with TestClient(create_app()) as client:
-            response = client.get("/api/me")
-        assert response.status_code == 403
-        assert response.json()["detail"]["code"] == "pending"
+        with pytest.raises(SystemExit, match="active access entry"):
+            create_app()
 
 
 class TestCatalog:

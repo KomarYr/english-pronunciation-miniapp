@@ -24,6 +24,7 @@ from azure_mini_app.interactions.miniapp.auth import (
     validate_dev_mode,
     validate_init_data,
 )
+from azure_mini_app.services.storage import Storage
 
 BOT_TOKEN = "123456:test-bot-token"
 NOW = datetime(2026, 11, 14, 12, 0, 0, tzinfo=UTC)
@@ -236,19 +237,35 @@ class TestPinnedRealPayload:
 
 
 class TestDevModeGuard:
-    def test_off_is_always_fine(self):
-        # dev mode is not enabled in the test environment
-        if not settings.miniapp_dev_mode:
-            validate_dev_mode()
+    """Ticket 07: dev mode never weakens the gate — the fixed dev user
+    must hold an active access entry like anyone else."""
 
-    def test_empty_allowlist_allows_dev_user(self, monkeypatch):
-        monkeypatch.setattr(settings, "miniapp_dev_mode", True)
+    @pytest.fixture()
+    def dev_storage(self, tmp_path, monkeypatch):
         monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
-        validate_dev_mode()  # no exit
-
-    def test_dev_user_must_be_allowlisted(self, monkeypatch):
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
         monkeypatch.setattr(settings, "miniapp_dev_mode", True)
-        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
-        monkeypatch.setattr(settings, "miniapp_dev_user_id", 900000001)
+        monkeypatch.setattr(settings, "miniapp_dev_user_id", 42)
+        return Storage(tmp_path / "dev-guard.db")
+
+    def _dev_entry(self, storage: Storage, status: str) -> None:
+        user = storage.get_or_create_user("Dev", telegram_id=42)
+        storage.ensure_access(42, user.id, status=status)
+
+    def test_off_is_always_fine(self, monkeypatch, dev_storage):
+        monkeypatch.setattr(settings, "miniapp_dev_mode", False)
+        validate_dev_mode(dev_storage)  # dev mode off: no requirement
+
+    def test_active_entry_passes(self, dev_storage):
+        self._dev_entry(dev_storage, "active")
+        validate_dev_mode(dev_storage)  # no exit
+
+    def test_missing_entry_exits_with_instructions(self, dev_storage):
+        with pytest.raises(SystemExit, match="active access entry"):
+            validate_dev_mode(dev_storage)
+
+    @pytest.mark.parametrize("status", ["pending", "blocked"])
+    def test_non_active_entry_exits(self, dev_storage, status):
+        self._dev_entry(dev_storage, status)
         with pytest.raises(SystemExit):
-            validate_dev_mode()
+            validate_dev_mode(dev_storage)

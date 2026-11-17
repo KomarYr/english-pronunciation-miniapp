@@ -55,20 +55,44 @@ and use the inline button) — the Mini App opens.
 
 **Development without Telegram**: set `MINIAPP_DEV_MODE=1` and open
 `http://127.0.0.1:8000` in a plain browser; requests run as
-`MINIAPP_DEV_USER_ID` (which must be in `ALLOWED_TELEGRAM_IDS` — the
-allowlist stays closed even in dev mode).
+`MINIAPP_DEV_USER_ID`, which must hold an active access entry like
+anyone else. On a fresh database, list that ID in
+`ALLOWED_TELEGRAM_IDS` **before the first run** so the bootstrap seed
+creates it; on an existing database, start from a fresh DB file (dev
+data is disposable).
+
+## Access control lives in the database
+
+The access table is the sole source of truth (schema v2, ADR-0005):
+every Telegram ID has an Access entry with a Status (`pending`,
+`active`, `blocked`) and a role (`admin`/`user`). Nobody gets in until
+an admin approves them; blocking is immediate and reversible, and
+every change lands in an audit trail.
+
+**Getting access**: open the Mini App or message the bot — you are
+registered as `pending` and the admins are notified. An admin then
+runs `/approve <id>` from the chat.
+
+**Admin commands** (launcher, admins only — invisible to others):
+
+- `/requests` — who is waiting for approval
+- `/approve <id>` — activate (or re-activate) someone
+- `/block <id>` — revoke access on both surfaces immediately
+- `/users` — everyone with their status and role
+- `/id` — your own access status
+
+`ALLOWED_TELEGRAM_IDS` is a one-time bootstrap seed: on the first run
+each listed ID becomes an `active` entry; afterwards the database is
+the gate and the setting can be removed. `ADMIN_TELEGRAM_IDS` seeds
+the first admins the same way.
 
 ## The chat is only a launcher
 
-The Mini App is the single surface (ADR-0001). The chat keeps exactly:
-
-- `/start` — greeting + the open-app button
-- `/id` — shows your numeric Telegram ID (works without allowlisting)
-
-New users: send `/id` to the bot, then the owner appends the ID to
-`ALLOWED_TELEGRAM_IDS` in `.env` and restarts the server. Nobody else
-gets anything — voice notes included; they are politely refused with an
-open-app button.
+The Mini App is the single surface (ADR-0001). The chat keeps `/start`
+(the open-app button), the admin commands above, and `/id` as a status
+checker. Anything else — voice notes included — is politely refused
+with an open-app button; strangers who message the bot are registered
+as `pending` and told their request is awaiting approval.
 
 ## Using the Mini App
 
@@ -117,15 +141,17 @@ src/azure_mini_app/
 ├── app.py                    # use-cases: quota gate, guardrails, mistake bank
 ├── services/
 │   ├── azure_assessment.py   # the ONLY module importing the Speech SDK
-│   ├── storage.py            # SQLite: users/exercises/attempts + audio_usage ledger
+│   ├── storage.py            # SQLite: users/exercises/attempts + access/audit (schema v2)
 │   ├── quota.py              # monthly 5 h budget policy, warn at 80%
+│   ├── access_admin.py       # admin policy behind /requests /approve /block /users
+│   ├── auth_throttle.py      # sliding-window throttle on auth failures
 │   └── voice.py              # ffmpeg: any container → 16 kHz mono WAV
 └── interactions/
     ├── miniapp/              # FastAPI: static frontend + JSON API + webhook
     │   ├── web.py            # one process, three surfaces (ADR-0003)
-    │   ├── auth.py           # initData HMAC validation + allowlist
+    │   ├── auth.py           # initData HMAC validation, strict parsing, dev guard
     │   └── api.py            # one route per use-case, typed error codes
-    └── telegram.py           # launcher: /start, /id, voice-note refusal
+    └── telegram.py           # launcher: DB access gate, admin commands, /id status
 frontend/                     # vanilla TS + Vite Mini App (ADR-0004)
 ├── src/api.ts                # typed fetch wrapper (tma initData header)
 ├── src/recorder.ts           # MediaRecorder: WebM/Opus, 120 s cap

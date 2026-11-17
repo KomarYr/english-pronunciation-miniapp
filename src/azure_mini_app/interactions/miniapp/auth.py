@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qsl
 
 from azure_mini_app import settings
+from azure_mini_app.services.storage import Storage
 
 # initData older than a day is not trusted: Telegram regenerates it every
 # time the Mini App is opened, so a long-lived one only signals tampering.
@@ -153,15 +154,22 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
     return MiniAppUser(telegram_id=telegram_id, display_name=display_name)
 
 
-def validate_dev_mode() -> None:
-    """Dev mode must not weaken the closed gate: the dev user needs an
-    active access entry, which seeding arranges via the allowlist."""
+def validate_dev_mode(storage: Storage) -> None:
+    """Dev mode must not weaken the closed gate: the fixed dev user needs
+    an active access entry like anyone else (ticket 07).
+
+    Arranged the same way as for a real person: seed it once via
+    ALLOWED_TELEGRAM_IDS (the bootstrap), or /approve the dev id as an
+    admin. A pending, blocked or missing entry refuses to start.
+    """
     if not settings.miniapp_dev_mode:
         return
-    if not settings.allowed_telegram_ids:
-        return
-    if settings.miniapp_dev_user_id not in settings.allowed_telegram_ids:
+    entry = storage.get_access(settings.miniapp_dev_user_id)
+    if entry is None or entry.status != "active":
         sys.exit(
-            "MINIAPP_DEV_MODE is on, but MINIAPP_DEV_USER_ID "
-            f"({settings.miniapp_dev_user_id}) is not in ALLOWED_TELEGRAM_IDS."
+            "MINIAPP_DEV_MODE is on, but the dev user (MINIAPP_DEV_USER_ID "
+            f"{settings.miniapp_dev_user_id}) has no active access entry. "
+            "On a fresh database, put the dev ID in ALLOWED_TELEGRAM_IDS "
+            "before the first run (the bootstrap seed); on an existing "
+            "database, start from a fresh DB file — dev data is disposable."
         )

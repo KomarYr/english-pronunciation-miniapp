@@ -41,7 +41,8 @@ miniapp_port = _int_env("MINIAPP_PORT", 8000)
 miniapp_public_url: str | None = environ.get("MINIAPP_PUBLIC_URL")
 
 # Dev mode: a plain browser (no Telegram) talks to the API as this fixed
-# user. Localhost convenience only — the dev id must still be allowlisted.
+# user. Localhost convenience only — the dev user must still hold an
+# active access entry like anyone else.
 miniapp_dev_mode = environ.get("MINIAPP_DEV_MODE", "").lower() in ("1", "true", "yes")
 miniapp_dev_user_id = _int_env("MINIAPP_DEV_USER_ID", 900_000_001)
 miniapp_dev_user_name = environ.get("MINIAPP_DEV_USER_NAME", "Dev Browser User")
@@ -61,7 +62,9 @@ def _parse_allowed_telegram_ids() -> frozenset[int]:
     return _parse_telegram_ids("ALLOWED_TELEGRAM_IDS")
 
 
-# Closed by default: users must be added to .env to use the Telegram bot.
+# Legacy bootstrap seed (ticket 07): seeds `active` access entries ONCE
+# at first run; the database is the live gate afterwards. Closed by
+# default — nobody gets in without an Access entry.
 allowed_telegram_ids = _parse_allowed_telegram_ids()
 
 # Admins manage access (approve/block) in ticket 05's Launcher commands.

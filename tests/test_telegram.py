@@ -23,7 +23,7 @@ from azure_mini_app.interactions.telegram import (
 from azure_mini_app.services.storage import Storage
 
 
-class TestAllowlistParsing:
+class TestBootstrapSeedParsing:
     def test_parse_valid_ids(self, monkeypatch):
         monkeypatch.setenv("ALLOWED_TELEGRAM_IDS", " 123, 456 ,789")
         from azure_mini_app.settings import _parse_allowed_telegram_ids
