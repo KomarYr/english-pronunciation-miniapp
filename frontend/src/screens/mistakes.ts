@@ -2,6 +2,7 @@
    The backend derives it from attempt history — nothing to manage here. */
 
 import { mistakes as fetchMistakes, ApiError } from "../api";
+import { isAccessCode, renderAccessGate } from "./access";
 import { openExercise } from "./practice";
 import { el } from "../ui";
 import type { Mistake } from "../types";
@@ -12,12 +13,8 @@ export async function renderMistakes(target: HTMLElement): Promise<void> {
   try {
     items = (await fetchMistakes()).mistakes;
   } catch (error) {
-    if (error instanceof ApiError && error.code === "not_allowed") {
-      target.append(
-        el("div", { class: "card center" },
-          el("p", { text: "You are not allowed to use this trainer yet." }),
-        ),
-      );
+    if (error instanceof ApiError && isAccessCode(error.code)) {
+      renderAccessGate(target, error.code);
       return;
     }
     target.append(

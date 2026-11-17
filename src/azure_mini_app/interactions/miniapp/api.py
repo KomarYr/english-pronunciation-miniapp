@@ -15,11 +15,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from azure_mini_app import app, settings
 from azure_mini_app.domain import TextValidationError, User
+from azure_mini_app.interactions.miniapp.access import (
+    notify_admins_pending,
+    register_access,
+)
 from azure_mini_app.interactions.miniapp.auth import (
     MiniAppAuthError,
     MiniAppUser,
-    NotAllowedError,
-    resolve_user,
     validate_init_data,
 )
 from azure_mini_app.services.azure_assessment import (
@@ -69,18 +71,32 @@ def get_mini_app_user(
     )
 
 
+PENDING_MESSAGE = (
+    "Your access request has been recorded — reopen the app once the "
+    "bot owner approves you."
+)
+BLOCKED_MESSAGE = "Your access to this trainer was blocked."
+
+
 async def get_user(
     storage: Annotated[Storage, Depends(get_storage)],
     identity: Annotated[MiniAppUser, Depends(get_mini_app_user)],
 ) -> User:
-    """Resolve the identity against storage; the allowlist gate lives here."""
-    try:
-        return await asyncio.to_thread(resolve_user, storage, identity)
-    except NotAllowedError as error:
-        raise HTTPException(
-            status_code=403,
-            detail={"code": "not_allowed", "message": str(error)},
-        ) from None
+    """Resolve the identity against the access database; the gate lives here.
+
+    Strangers self-register as pending (admins get notified once),
+    pending and blocked callers get typed 403s, active callers pass —
+    checked on every request, so a block takes effect mid-session.
+    """
+    registration = await asyncio.to_thread(register_access, storage, identity)
+    if registration.entry.status == "pending":
+        if registration.created:
+            # first sight: tell the admins before answering the stranger
+            await notify_admins_pending(registration.user)
+        raise _fail(403, "pending", PENDING_MESSAGE)
+    if registration.entry.status == "blocked":
+        raise _fail(403, "blocked", BLOCKED_MESSAGE)
+    return registration.user
 
 
 def _fail(status: int, code: str, message: str, **extra) -> HTTPException:

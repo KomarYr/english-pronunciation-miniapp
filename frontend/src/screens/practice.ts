@@ -6,6 +6,7 @@ exercise view, and the result renders through report.ts. */
 
 import { assess, exercises as fetchExercises, addCustomText } from "../api";
 import { ApiError } from "../api";
+import { isAccessCode, renderAccessGate } from "./access";
 import { Recorder } from "../recorder";
 import { hideBackButton, showBackButton } from "../telegram";
 import type { Exercise } from "../types";
@@ -70,8 +71,8 @@ export async function renderPracticeList(target: HTMLElement): Promise<void> {
   try {
     list = (await fetchExercises()).exercises;
   } catch (error) {
-    if (error instanceof ApiError && error.code === "not_allowed") {
-      renderNotAllowed(target);
+    if (error instanceof ApiError && isAccessCode(error.code)) {
+      renderAccessGate(target, error.code);
       return;
     }
     toast(error instanceof Error ? error.message : "Could not load exercises", "error");
@@ -102,15 +103,6 @@ export async function renderPracticeList(target: HTMLElement): Promise<void> {
     listRoot.append(details);
   }
   target.append(listRoot);
-}
-
-function renderNotAllowed(target: HTMLElement): void {
-  target.append(
-    el("div", { class: "card center" },
-      el("p", { text: "You are not allowed to use this trainer yet." }),
-      el("p", { class: "muted", text: "Ask the bot owner to add your Telegram ID to ALLOWED_TELEGRAM_IDS." }),
-    ),
-  );
 }
 
 /** Show one exercise and run the record → assess flow. */

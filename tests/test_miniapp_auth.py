@@ -20,13 +20,10 @@ from azure_mini_app import settings
 from azure_mini_app.interactions.miniapp.auth import (
     MiniAppAuthError,
     MiniAppUser,
-    NotAllowedError,
     is_allowed,
-    resolve_user,
     validate_dev_mode,
     validate_init_data,
 )
-from azure_mini_app.services.storage import Storage
 
 BOT_TOKEN = "123456:test-bot-token"
 NOW = datetime(2026, 11, 14, 12, 0, 0, tzinfo=UTC)
@@ -171,13 +168,9 @@ class TestPinnedRealPayload:
         # here, the fixture holds personal data that stays out of git
         user = json.loads(pairs["user"])
         name = " ".join(
-            part
-            for part in (user.get("first_name"), user.get("last_name"))
-            if part
+            part for part in (user.get("first_name"), user.get("last_name")) if part
         )
-        assert identity == MiniAppUser(
-            telegram_id=int(user["id"]), display_name=name
-        )
+        assert identity == MiniAppUser(telegram_id=int(user["id"]), display_name=name)
 
 
 class TestAllowlist:
@@ -189,20 +182,9 @@ class TestAllowlist:
         monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
         assert is_allowed(42) is True
 
-    def test_resolve_user_creates_and_reuses(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
-        storage = Storage(tmp_path / "auth-test.db")
-        identity = MiniAppUser(telegram_id=42, display_name="Ada Lovelace")
-        first = resolve_user(storage, identity)
-        second = resolve_user(storage, identity)
-        assert first.id == second.id
-        assert first.telegram_id == 42
-
-    def test_resolve_user_rejects_stranger(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
-        storage = Storage(tmp_path / "auth-test.db")
-        with pytest.raises(NotAllowedError, match="not on the allowlist"):
-            resolve_user(storage, MiniAppUser(telegram_id=999, display_name="Eve"))
+    # (The Mini App's own gate moved to the access database in ticket 03
+    # — see tests/test_miniapp_access.py. `is_allowed` still gates the
+    # Launcher until ticket 04 flips it.)
 
 
 class TestDevModeGuard:

@@ -104,16 +104,16 @@ class TestAuthWiring:
         assert response.status_code == 401
         assert response.json()["detail"]["code"] == "auth_required"
 
-    def test_stranger_is_403_not_allowed(self, monkeypatch, tmp_path):
-        # Empty allowlist: dev mode passes the startup guard, then the
-        # closed-allowlist rule itself denies the dev user at resolve time.
+    def test_stranger_auto_registers_pending(self, monkeypatch, tmp_path):
+        # Nothing seeded: the dev user is a stranger to the database, so
+        # the closed-by-default lifecycle registers them as pending.
         make_app(monkeypatch, tmp_path, allowed=frozenset())
         from azure_mini_app.interactions.miniapp.web import create_app
 
         with TestClient(create_app()) as client:
             response = client.get("/api/me")
         assert response.status_code == 403
-        assert response.json()["detail"]["code"] == "not_allowed"
+        assert response.json()["detail"]["code"] == "pending"
 
 
 class TestCatalog:

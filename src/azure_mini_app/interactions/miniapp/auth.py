@@ -3,11 +3,13 @@
 Two paths reach the API:
 
 - **production** — Telegram signs `initData` (HMAC-SHA256 with the bot
-  token). We verify the signature, reject stale data, resolve the
-  Telegram user, and enforce the closed allowlist;
+  token). We verify the signature and reject stale data, producing a
+  `MiniAppUser` identity; what that identity may do is decided by the
+  access database (access.py), not here;
 - **development** — `MINIAPP_DEV_MODE` lets a plain browser talk to the
-  API as a fixed dev user (which must still be allowlisted), so you can
-  iterate on the UI without opening the app inside Telegram.
+  API as a fixed dev user (which must hold an active access entry like
+  anyone else), so you can iterate on the UI without opening the app
+  inside Telegram.
 """
 
 import hashlib
@@ -19,8 +21,6 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qsl
 
 from azure_mini_app import settings
-from azure_mini_app.domain import User
-from azure_mini_app.services.storage import Storage
 
 # initData older than a day is not trusted: Telegram regenerates it every
 # time the Mini App is opened, so a long-lived one only signals tampering.
@@ -29,10 +29,6 @@ MAX_AUTH_AGE_SECONDS = 86_400.0
 
 class MiniAppAuthError(Exception):
     """The request carries no valid Telegram identity."""
-
-
-class NotAllowedError(Exception):
-    """Valid identity, but the user is not on the closed allowlist."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,12 +97,18 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
 
 
 def is_allowed(telegram_id: int) -> bool:
-    """Closed by default: users must be listed in ALLOWED_TELEGRAM_IDS."""
+    """Launcher gate: users must be listed in ALLOWED_TELEGRAM_IDS.
+
+    Legacy env allowlist — still the live gate for the Launcher until
+    ticket 04 moves it to the access database. The Mini App API already
+    gates on the database instead (access.py).
+    """
     return telegram_id in settings.allowed_telegram_ids
 
 
 def validate_dev_mode() -> None:
-    """Dev mode must not weaken the closed allowlist."""
+    """Dev mode must not weaken the closed gate: the dev user needs an
+    active access entry, which seeding arranges via the allowlist."""
     if not settings.miniapp_dev_mode:
         return
     if not settings.allowed_telegram_ids:
@@ -116,14 +118,3 @@ def validate_dev_mode() -> None:
             "MINIAPP_DEV_MODE is on, but MINIAPP_DEV_USER_ID "
             f"({settings.miniapp_dev_user_id}) is not in ALLOWED_TELEGRAM_IDS."
         )
-
-
-def resolve_user(storage: Storage, identity: MiniAppUser) -> User:
-    """Login matches on telegram_id; the allowlist is enforced here."""
-    if not is_allowed(identity.telegram_id):
-        raise NotAllowedError(
-            f"Telegram ID {identity.telegram_id} is not on the allowlist."
-        )
-    return storage.get_or_create_user(
-        identity.display_name, telegram_id=identity.telegram_id
-    )

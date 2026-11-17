@@ -1,6 +1,7 @@
 /* App shell: boot, header, tab bar, screen switching. */
 
 import { me, ApiError } from "./api";
+import { isAccessCode, renderAccessGate } from "./screens/access";
 import { abandonFlow, renderPracticeList } from "./screens/practice";
 import { renderMistakes } from "./screens/mistakes";
 import { renderStats } from "./screens/stats";
@@ -38,14 +39,8 @@ const header = el(
 appRoot.append(header, content, tabBar);
 
 function showTabError(target: HTMLElement, error: unknown): void {
-  if (error instanceof ApiError && error.code === "not_allowed") {
-    target.replaceChildren(
-      el("div", { class: "card center" },
-        el("h2", { text: "Not allowed yet" }),
-        el("p", { text: "This trainer is closed by default." }),
-        el("p", { class: "muted", text: "Send /id to the bot and ask the owner to add your ID to ALLOWED_TELEGRAM_IDS." }),
-      ),
-    );
+  if (error instanceof ApiError && isAccessCode(error.code)) {
+    renderAccessGate(target, error.code);
     return;
   }
   if (error instanceof ApiError && (error.code === "auth_required" || error.code === "auth_failed")) {
