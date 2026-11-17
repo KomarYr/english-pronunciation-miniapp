@@ -20,7 +20,6 @@ from azure_mini_app import settings
 from azure_mini_app.interactions.miniapp.auth import (
     MiniAppAuthError,
     MiniAppUser,
-    is_allowed,
     validate_dev_mode,
     validate_init_data,
 )
@@ -172,19 +171,9 @@ class TestPinnedRealPayload:
         )
         assert identity == MiniAppUser(telegram_id=int(user["id"]), display_name=name)
 
-
-class TestAllowlist:
-    def test_closed_by_default(self, monkeypatch):
-        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
-        assert is_allowed(42) is False
-
-    def test_member_passes(self, monkeypatch):
-        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
-        assert is_allowed(42) is True
-
-    # (The Mini App's own gate moved to the access database in ticket 03
-    # — see tests/test_miniapp_access.py. `is_allowed` still gates the
-    # Launcher until ticket 04 flips it.)
+    # (The allowlist helper retired in ticket 04: both surfaces — Mini App
+    # (ticket 03) and Launcher (ticket 04) — now gate on the access
+    # database; see tests/test_miniapp_access.py and test_telegram.py.)
 
 
 class TestDevModeGuard:

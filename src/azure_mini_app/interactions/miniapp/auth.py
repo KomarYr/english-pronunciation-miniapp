@@ -39,6 +39,20 @@ class MiniAppUser:
     display_name: str
 
 
+def display_name_for(
+    first_name: str | None,
+    last_name: str | None,
+    username: str | None,
+    telegram_id: int,
+) -> str:
+    """The person-facing name rule, shared by initData and the launcher:
+    full name, else username, else a stable placeholder."""
+    name_parts = [first_name, last_name]
+    return (
+        " ".join(part for part in name_parts if part) or username or f"tg-{telegram_id}"
+    )
+
+
 def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAppUser:
     """Verify Telegram-signed initData and extract the user identity.
 
@@ -87,23 +101,13 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
         telegram_id = int(user["id"])
     except KeyError, TypeError, ValueError:
         raise MiniAppAuthError("initData user has no numeric id") from None
-    name_parts = [user.get("first_name"), user.get("last_name")]
-    display_name = (
-        " ".join(part for part in name_parts if part)
-        or user.get("username")
-        or f"tg-{telegram_id}"
+    display_name = display_name_for(
+        user.get("first_name"),
+        user.get("last_name"),
+        user.get("username"),
+        telegram_id,
     )
     return MiniAppUser(telegram_id=telegram_id, display_name=display_name)
-
-
-def is_allowed(telegram_id: int) -> bool:
-    """Launcher gate: users must be listed in ALLOWED_TELEGRAM_IDS.
-
-    Legacy env allowlist — still the live gate for the Launcher until
-    ticket 04 moves it to the access database. The Mini App API already
-    gates on the database instead (access.py).
-    """
-    return telegram_id in settings.allowed_telegram_ids
 
 
 def validate_dev_mode() -> None:

@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
             token=settings.telegram_bot_token,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
-        application.state.dispatcher = create_dispatcher()
+        application.state.dispatcher = create_dispatcher(storage)
     else:
         application.state.bot = None
         application.state.dispatcher = None
