@@ -47,18 +47,26 @@ miniapp_dev_user_id = _int_env("MINIAPP_DEV_USER_ID", 900_000_001)
 miniapp_dev_user_name = environ.get("MINIAPP_DEV_USER_NAME", "Dev Browser User")
 
 
-def _parse_allowed_telegram_ids() -> frozenset[int]:
-    """Parse ALLOWED_TELEGRAM_IDS=123,456 from .env; empty → nobody allowed."""
-    raw = environ.get("ALLOWED_TELEGRAM_IDS", "")
+def _parse_telegram_ids(env_name: str) -> frozenset[int]:
+    """Parse e.g. ADMIN_TELEGRAM_IDS=123,456; empty → nobody."""
+    raw = environ.get(env_name, "")
     parts = [part.strip() for part in raw.split(",") if part.strip()]
     try:
         return frozenset(int(part) for part in parts)
     except ValueError:
-        sys.exit(f"ALLOWED_TELEGRAM_IDS must be comma-separated integers, got {raw!r}")
+        sys.exit(f"{env_name} must be comma-separated integers, got {raw!r}")
+
+
+def _parse_allowed_telegram_ids() -> frozenset[int]:
+    return _parse_telegram_ids("ALLOWED_TELEGRAM_IDS")
 
 
 # Closed by default: users must be added to .env to use the Telegram bot.
 allowed_telegram_ids = _parse_allowed_telegram_ids()
+
+# Admins manage access (approve/block) in ticket 05's Launcher commands.
+# Empty is allowed but reported at startup — see storage._seed_access.
+admin_telegram_ids = _parse_telegram_ids("ADMIN_TELEGRAM_IDS")
 
 # Custom-text guardrails: a user-submitted exercise must fit this window.
 CUSTOM_TEXT_MIN_WORDS = 10

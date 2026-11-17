@@ -1,24 +1,34 @@
-"""SQLite persistence: users, exercises, attempts.
+"""SQLite persistence: users, exercises, attempts, access, audit.
 
 Speaks only in domain types (and small read-model dataclasses below).
 No business logic here: quota policy and the low-score → mistake-bank
 rule belong to app.py. Connection is opened per operation so worker
 threads (asyncio.to_thread in the Telegram bot) never share one handle.
+
+Schema is versioned via SQLite's `user_version` pragma. Opening a v1
+database migrates it to v2 in place (access + audit tables) and seeds
+access once from the env bootstrap; afterwards the database is the sole
+source of truth and env changes do nothing.
 """
 
 import hashlib
 import json
+import logging
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from azure_mini_app import exercises as catalog
+from azure_mini_app import settings
 from azure_mini_app.domain import Attempt, ScoreReport, User, WordScore
 
-SCHEMA_VERSION = 1
+logger = logging.getLogger(__name__)
+
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -72,6 +82,32 @@ CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_exercise ON attempts(exercise_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_owner ON exercises(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_audio_usage_user ON audio_usage(user_id);
+
+-- Access control (schema v2): one row per Telegram ID. The database is
+-- the source of truth; the env allowlist only seeds it once (see
+-- _seed_access). Closed by default: nobody gets in without an entry.
+CREATE TABLE IF NOT EXISTS access (
+    telegram_id INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    status      TEXT NOT NULL CHECK (status IN ('pending', 'active', 'blocked')),
+    role        TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+-- Append-only trail of who changed access and when (actor/subject are
+-- users.id; actor is NULL for system/bootstrap actions).
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id   INTEGER REFERENCES users(id),
+    subject_id INTEGER REFERENCES users(id),
+    event      TEXT NOT NULL,
+    detail     TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_access_user ON access(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_subject ON audit_log(subject_id);
 """
 
 
@@ -94,6 +130,43 @@ class UserStats:
     total_audio_seconds: float
     avg_pronunciation_score: float | None
     avg_accuracy_score: float | None
+
+
+AccessStatus = Literal["pending", "active", "blocked"]
+AccessRole = Literal["admin", "user"]
+
+# Fixed audit vocabulary — not a free-form string (see _record_audit).
+AuditEvent = Literal["access_seeded", "access_created", "status_changed", "role_changed"]
+
+
+def _validate_status(status: AccessStatus) -> None:
+    if status not in ("pending", "active", "blocked"):
+        raise ValueError(f"status must be pending/active/blocked, got {status!r}")
+
+
+def _validate_role(role: AccessRole) -> None:
+    if role not in ("admin", "user"):
+        raise ValueError(f"role must be admin/user, got {role!r}")
+
+
+def _fetch_access_row(
+    conn: sqlite3.Connection, telegram_id: int
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM access WHERE telegram_id = ?", (telegram_id,)
+    ).fetchone()
+
+
+@dataclass(frozen=True, slots=True)
+class AccessEntry:
+    """One person's access state: the database's word on who may enter."""
+
+    telegram_id: int
+    user_id: int
+    status: AccessStatus
+    role: AccessRole
+    created_at: datetime
+    updated_at: datetime
 
 
 def _utcnow_iso() -> str:
@@ -182,27 +255,112 @@ class Storage:
 
     def init_schema(self) -> None:
         with self._connect() as conn:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
             conn.executescript(_SCHEMA)
-            for e in catalog.list_exercises():
-                conn.execute(
+            self._seed_builtin_exercises(conn)
+            if version < SCHEMA_VERSION:
+                # First open of a v1 database (migration) or a brand-new
+                # file: bootstrap access once. Already-migrated databases
+                # skip this entirely — env changes then do nothing.
+                self._seed_access(conn)
+                # PRAGMA values can't be bound parameters; the value is
+                # an internal constant, not user input.
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            else:
+                # Diagnostic, not auto-repair: a v2 database whose access
+                # table is empty while bootstrap IDs exist in .env means
+                # the access data was probably wiped by hand.
+                (access_count,) = conn.execute(
+                    "SELECT COUNT(*) FROM access"
+                ).fetchone()
+                if not access_count and (
+                    settings.allowed_telegram_ids or settings.admin_telegram_ids
+                ):
+                    logger.warning(
+                        "access table is empty although bootstrap IDs are "
+                        "set in .env — access data may have been wiped. "
+                        "Nobody can use the Mini App until an entry exists."
+                    )
+
+    def _seed_builtin_exercises(self, conn: sqlite3.Connection) -> None:
+        for e in catalog.list_exercises():
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO exercises
+                    (id, owner_user_id, title, reference_text, category,
+                     level, phoneme_focus, source, created_at)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, 'builtin', ?)
+                """,
+                (
+                    e.id,
+                    e.title,
+                    e.reference_text,
+                    e.category,
+                    e.level,
+                    json.dumps(sorted(e.phoneme_focus))
+                    if e.phoneme_focus
+                    else None,
+                    _utcnow_iso(),
+                ),
+            )
+
+    def _seed_access(self, conn: sqlite3.Connection) -> None:
+        """One-time bootstrap: the env allowlist becomes the database.
+
+        Every legacy ALLOWED_TELEGRAM_IDS entry becomes `active`; every
+        ADMIN_TELEGRAM_IDS entry becomes `active` with role `admin` (an
+        id in both gets the admin role). This is the only path by which
+        env IDs enter the access table — after it, the database is the
+        sole source of truth.
+        """
+        admins = settings.admin_telegram_ids
+        legacy = settings.allowed_telegram_ids
+        if not admins:
+            logger.warning(
+                "ADMIN_TELEGRAM_IDS is empty — nobody will be able to "
+                "approve access requests. Add at least one admin ID to .env."
+            )
+        for telegram_id in sorted(legacy | admins):
+            role: AccessRole = "admin" if telegram_id in admins else "user"
+            # row-level idempotency: a partially-seeded file (interrupted
+            # migration) re-opens without crashing
+            already = conn.execute(
+                "SELECT 1 FROM access WHERE telegram_id = ?", (telegram_id,)
+            ).fetchone()
+            if already is not None:
+                continue
+            row = conn.execute(
+                "SELECT id FROM users WHERE telegram_id = ?", (telegram_id,)
+            ).fetchone()
+            if row is None:
+                # person never opened the app: placeholder user row so
+                # the access entry has something to point at
+                cursor = conn.execute(
                     """
-                    INSERT OR IGNORE INTO exercises
-                        (id, owner_user_id, title, reference_text, category,
-                         level, phoneme_focus, source, created_at)
-                    VALUES (?, NULL, ?, ?, ?, ?, ?, 'builtin', ?)
+                    INSERT INTO users (display_name, telegram_id, created_at)
+                    VALUES (?, ?, ?)
                     """,
-                    (
-                        e.id,
-                        e.title,
-                        e.reference_text,
-                        e.category,
-                        e.level,
-                        json.dumps(sorted(e.phoneme_focus))
-                        if e.phoneme_focus
-                        else None,
-                        _utcnow_iso(),
-                    ),
+                    (f"tg-{telegram_id}", telegram_id, _utcnow_iso()),
                 )
+                user_id = int(cursor.lastrowid)
+            else:
+                user_id = int(row["id"])
+            now = _utcnow_iso()
+            conn.execute(
+                """
+                INSERT INTO access
+                    (telegram_id, user_id, status, role, created_at, updated_at)
+                VALUES (?, ?, 'active', ?, ?, ?)
+                """,
+                (telegram_id, user_id, role, now, now),
+            )
+            self._record_audit(
+                conn,
+                actor_id=None,
+                subject_id=user_id,
+                event="access_seeded",
+                detail=f"role={role}",
+            )
 
     # --- users -------------------------------------------------------------
 
@@ -237,16 +395,42 @@ class Storage:
     def get_or_create_user(
         self, display_name: str, telegram_id: int | None = None
     ) -> User:
+        """Match on telegram_id only — display names never identify anyone.
+
+        Two people with the same display name must never merge into one
+        user row. Without a telegram id there is no identity to match
+        on, so a fresh row is created.
+        """
+        if telegram_id is None:
+            return self.create_user(display_name, None)
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM users WHERE telegram_id = ? OR display_name = ?",
-                (telegram_id, display_name),
+                "SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)
             ).fetchone()
-        return (
-            self._user_from_row(row)
-            if row
-            else self.create_user(display_name, telegram_id)
-        )
+            if row is None:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO users (display_name, telegram_id, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (display_name, telegram_id, datetime.now(UTC).isoformat()),
+                )
+                row = conn.execute(
+                    "SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)
+                ).fetchone()
+            elif (
+                row["display_name"] == f"tg-{telegram_id}" and display_name
+            ):
+                # seeded placeholder ("tg-42") gets the real name the
+                # first time the actual person logs in
+                conn.execute(
+                    "UPDATE users SET display_name = ? WHERE id = ?",
+                    (display_name, row["id"]),
+                )
+                row = conn.execute(
+                    "SELECT * FROM users WHERE id = ?", (row["id"],)
+                ).fetchone()
+        return self._user_from_row(row)
 
     @staticmethod
     def _user_from_row(row: sqlite3.Row) -> User:
@@ -256,6 +440,130 @@ class Storage:
             telegram_id=row["telegram_id"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )
+
+    # --- access + audit -----------------------------------------------------
+
+    def _access_from_row(self, row: sqlite3.Row) -> AccessEntry:
+        return AccessEntry(
+            telegram_id=int(row["telegram_id"]),
+            user_id=int(row["user_id"]),
+            status=row["status"],
+            role=row["role"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def _record_audit(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        actor_id: int | None,
+        subject_id: int | None,
+        event: AuditEvent,
+        detail: str | None = None,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO audit_log (actor_id, subject_id, event, detail, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (actor_id, subject_id, event, detail, _utcnow_iso()),
+        )
+
+    def ensure_access(
+        self,
+        telegram_id: int,
+        user_id: int,
+        *,
+        status: AccessStatus = "pending",
+        role: AccessRole = "user",
+        actor_id: int | None = None,
+    ) -> AccessEntry:
+        """Create the access entry if absent; an existing row is untouched.
+
+        The audit trail records *changes*, so a re-ensure of an existing
+        entry writes nothing.
+        """
+        _validate_status(status)
+        _validate_role(role)
+        with self._connect() as conn:
+            now = _utcnow_iso()
+            cursor = conn.execute(
+                """
+                INSERT INTO access
+                    (telegram_id, user_id, status, role, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO NOTHING
+                """,
+                (telegram_id, user_id, status, role, now, now),
+            )
+            row = _fetch_access_row(conn, telegram_id)
+            if cursor.rowcount == 1:
+                self._record_audit(
+                    conn,
+                    actor_id=actor_id,
+                    subject_id=int(row["user_id"]),
+                    event="access_created",
+                )
+        return self._access_from_row(row)
+
+    def get_access(self, telegram_id: int) -> AccessEntry | None:
+        with self._connect() as conn:
+            row = _fetch_access_row(conn, telegram_id)
+        return self._access_from_row(row) if row else None
+
+    def set_access_status(
+        self, telegram_id: int, status: AccessStatus, *, actor_id: int | None = None
+    ) -> AccessEntry:
+        """Move an entry to pending/active/blocked; audit records the move."""
+        _validate_status(status)
+        return self._change_access(
+            telegram_id, "status", status, actor_id=actor_id, event="status_changed"
+        )
+
+    def set_access_role(
+        self, telegram_id: int, role: AccessRole, *, actor_id: int | None = None
+    ) -> AccessEntry:
+        """Promote/demote between admin and user; audit records the change."""
+        _validate_role(role)
+        return self._change_access(
+            telegram_id, "role", role, actor_id=actor_id, event="role_changed"
+        )
+
+    def _change_access(
+        self,
+        telegram_id: int,
+        column: Literal["status", "role"],
+        value: str,
+        *,
+        actor_id: int | None,
+        event: AuditEvent,
+    ) -> AccessEntry:
+        """Update one access column; audit records the change.
+
+        Setting a field to its current value is not a change: nothing is
+        written and nothing is audited. `column` is a Literal, never
+        caller input.
+        """
+        with self._connect() as conn:
+            row = _fetch_access_row(conn, telegram_id)
+            if row is None:
+                raise KeyError(f"no access entry for telegram id {telegram_id}")
+            if row[column] == value:
+                return self._access_from_row(row)
+            conn.execute(
+                f"UPDATE access SET {column} = ?, updated_at = ? WHERE telegram_id = ?",
+                (value, _utcnow_iso(), telegram_id),
+            )
+            self._record_audit(
+                conn,
+                actor_id=actor_id,
+                subject_id=int(row["user_id"]),
+                event=event,
+                detail=f"{row[column]} → {value}",
+            )
+            row = _fetch_access_row(conn, telegram_id)
+        return self._access_from_row(row)
 
     # --- exercises -----------------------------------------------------------
 

@@ -1,13 +1,20 @@
-"""Storage invariants: schema, seeding, round-trips, ownership, quotas."""
+"""Storage invariants: schema, seeding, round-trips, ownership, quotas.
 
+Ticket 02 adds the v2 sections: access table + audit table, the
+user_version-driven v1→v2 migration with one-time env seeding, and the
+telegram_id-only login match.
+"""
+
+import logging
 import sqlite3
 from datetime import UTC, datetime
 
 import pytest
 
 from azure_mini_app import exercises as catalog
+from azure_mini_app import settings
 from azure_mini_app.domain import Attempt, ScoreReport, WordScore
-from azure_mini_app.services.storage import Storage
+from azure_mini_app.services.storage import SCHEMA_VERSION, Storage
 
 
 def make_report(overrides: dict | None = None) -> ScoreReport:
@@ -48,7 +55,10 @@ def make_attempt(
 
 
 @pytest.fixture()
-def storage(tmp_path):
+def storage(tmp_path, monkeypatch):
+    # isolate from the real .env: fresh databases in tests seed nothing
+    monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
+    monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
     return Storage(tmp_path / "test.db")
 
 
@@ -80,6 +90,210 @@ class TestUsers:
         first = storage.get_or_create_user("yurii", telegram_id=42)
         second = storage.get_or_create_user("yurii", telegram_id=42)
         assert first == second
+
+
+class TestLoginMatchesTelegramIdOnly:
+    def test_same_named_users_stay_distinct(self, storage):
+        ada_one = storage.get_or_create_user("Ada", telegram_id=1)
+        ada_two = storage.get_or_create_user("Ada", telegram_id=2)
+        assert ada_one.id != ada_two.id
+        assert storage.get_or_create_user("Ada", telegram_id=1) == ada_one
+
+    def test_without_telegram_id_there_is_no_identity_to_match(self, storage):
+        # a display name is not an identity: without a telegram id the
+        # call can only create
+        first = storage.get_or_create_user("Solo")
+        second = storage.get_or_create_user("Solo")
+        assert first.id != second.id
+
+    def test_seeded_placeholder_gets_real_name_on_first_login(self, storage):
+        placeholder = storage.create_user("tg-42", telegram_id=42)
+        named = storage.get_or_create_user("Ada Komar", telegram_id=42)
+        assert named.id == placeholder.id  # same person, not a new row
+        assert named.display_name == "Ada Komar"
+        assert storage.get_or_create_user("Ada Komar", telegram_id=42) == named
+
+    def test_real_names_are_never_overwritten(self, storage):
+        storage.create_user("Real Name", telegram_id=42)
+        same = storage.get_or_create_user("Different Name", telegram_id=42)
+        assert same.display_name == "Real Name"
+
+
+# --- ticket 02: schema v2 — access, audit, migration --------------------------
+
+
+def _strip_to_v1(db_path):
+    """Revert a v2 database file to the shipped v1 state.
+
+    v1 had no access/audit tables and never set user_version (so it
+    reads 0). v2 does not alter any v1 table, so dropping the new tables
+    and resetting the pragma reconstructs a faithful v1 file.
+    """
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DROP TABLE access")
+        conn.execute("DROP TABLE audit_log")
+        conn.execute("PRAGMA user_version = 0")
+
+
+def _audit_events(db_path) -> list[tuple]:
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("SELECT event, detail FROM audit_log ORDER BY id").fetchall()
+
+
+def _access_ids(db_path) -> list[int]:
+    with sqlite3.connect(db_path) as conn:
+        return [
+            row[0]
+            for row in conn.execute(
+                "SELECT telegram_id FROM access ORDER BY telegram_id"
+            )
+        ]
+
+
+@pytest.fixture()
+def seeded_env(monkeypatch):
+    monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
+    monkeypatch.setattr(settings, "admin_telegram_ids", frozenset({7}))
+
+
+class TestSchemaV2Migration:
+    def test_fresh_database_is_version_2(self, storage, tmp_path):
+        with sqlite3.connect(tmp_path / "test.db") as conn:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+
+    def test_fresh_database_seeds_allowlist_and_admins(self, seeded_env, tmp_path):
+        storage = Storage(tmp_path / "test.db")
+        entry_user = storage.get_access(42)
+        entry_admin = storage.get_access(7)
+        assert (entry_user.status, entry_user.role) == ("active", "user")
+        assert (entry_admin.status, entry_admin.role) == ("active", "admin")
+
+    def test_seed_creates_missing_user_rows(self, seeded_env, tmp_path):
+        # an allowlisted person who never opened the app still gets a
+        # user row, so the access entry's foreign key has a target
+        storage = Storage(tmp_path / "test.db")
+        assert storage.get_user_by_telegram_id(42).telegram_id == 42
+        assert storage.get_user_by_telegram_id(7).telegram_id == 7
+
+    def test_migration_preserves_data_and_reuses_user_rows(self, monkeypatch, tmp_path):
+        db = tmp_path / "test.db"
+        # phase 1: a pre-v2 world — no env seeds, a real user with data
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset())
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        storage = Storage(db)
+        ada = storage.create_user("Ada", telegram_id=42)
+        attempt = storage.add_attempt(make_attempt(user_id=ada.id))
+        _strip_to_v1(db)
+        # phase 2: upgrade with the legacy allowlist pointing at Ada
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset({7}))
+        migrated = Storage(db)
+        assert migrated.get_user(ada.id) == ada
+        assert migrated.attempts_for_user(ada.id) == [attempt]
+        entry = migrated.get_access(42)
+        assert (entry.status, entry.role) == ("active", "user")
+        assert entry.user_id == ada.id  # Ada's row is reused, not duplicated
+
+    def test_reopening_migrated_database_changes_nothing(self, seeded_env, monkeypatch, tmp_path):
+        db = tmp_path / "test.db"
+        Storage(db)
+        # the database is now the source of truth: env changes must not
+        # re-seed, duplicate or delete anything
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42, 99}))
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        before = _audit_events(db)
+        Storage(db)
+        assert _access_ids(db) == [7, 42]
+        assert _audit_events(db) == before
+
+    def test_empty_admin_seed_is_reported(self, monkeypatch, tmp_path, caplog):
+        monkeypatch.setattr(settings, "allowed_telegram_ids", frozenset({42}))
+        monkeypatch.setattr(settings, "admin_telegram_ids", frozenset())
+        with caplog.at_level(logging.WARNING, logger="azure_mini_app.services.storage"):
+            Storage(tmp_path / "test.db")
+        assert "ADMIN_TELEGRAM_IDS" in caplog.text
+
+    def test_wiped_access_table_on_migrated_database_warns(
+        self, seeded_env, tmp_path, caplog
+    ):
+        db = tmp_path / "test.db"
+        Storage(db)
+        with sqlite3.connect(db) as conn:
+            conn.execute("DROP TABLE access")
+        # reopening recreates the table (empty) but must not silently
+        # pretend everything is fine while bootstrap IDs exist in .env
+        with caplog.at_level(logging.WARNING, logger="azure_mini_app.services.storage"):
+            Storage(db)
+        assert "may have been wiped" in caplog.text
+
+
+class TestAccessEntries:
+    def test_ensure_creates_pending_entry(self, storage):
+        user = storage.create_user("ada", telegram_id=42)
+        entry = storage.ensure_access(42, user.id)
+        assert entry.telegram_id == 42
+        assert entry.user_id == user.id
+        assert (entry.status, entry.role) == ("pending", "user")
+        assert entry.created_at == entry.updated_at
+
+    def test_ensure_is_idempotent(self, storage, tmp_path):
+        user = storage.create_user("ada", telegram_id=42)
+        first = storage.ensure_access(42, user.id)
+        second = storage.ensure_access(42, user.id, status="active")
+        assert first == second  # existing row is never overwritten
+        # and the audit trail only saw one creation, not two
+        assert _audit_events(tmp_path / "test.db") == [("access_created", None)]
+
+    def test_get_access_unknown_is_none(self, storage):
+        assert storage.get_access(123) is None
+
+    def test_status_change_updates_entry_and_audit(self, storage, tmp_path):
+        user = storage.create_user("ada", telegram_id=42)
+        storage.ensure_access(42, user.id, status="active")
+        blocked = storage.set_access_status(42, "blocked", actor_id=user.id)
+        assert blocked.status == "blocked"
+        assert blocked.created_at == storage.get_access(42).created_at
+        assert blocked.updated_at == storage.get_access(42).updated_at
+        assert _audit_events(tmp_path / "test.db") == [
+            ("access_created", None),
+            ("status_changed", "active → blocked"),
+        ]
+
+    def test_role_change_updates_entry_and_audit(self, storage, tmp_path):
+        user = storage.create_user("ada", telegram_id=42)
+        storage.ensure_access(42, user.id, status="active")
+        promoted = storage.set_access_role(42, "admin", actor_id=user.id)
+        assert promoted.role == "admin"
+        assert _audit_events(tmp_path / "test.db") == [
+            ("access_created", None),
+            ("role_changed", "user → admin"),
+        ]
+
+    def test_change_on_missing_entry_raises(self, storage):
+        with pytest.raises(KeyError):
+            storage.set_access_status(42, "blocked")
+        with pytest.raises(KeyError):
+            storage.set_access_role(42, "admin")
+
+    def test_rejects_unknown_status_and_role(self, storage):
+        user = storage.create_user("ada", telegram_id=42)
+        with pytest.raises(ValueError):
+            storage.ensure_access(42, user.id, status="banned")
+        storage.ensure_access(42, user.id)
+        with pytest.raises(ValueError):
+            storage.set_access_role(42, "superuser")
+
+    def test_noop_change_writes_nothing(self, storage, tmp_path):
+        # setting a field to its current value is not a change
+        user = storage.create_user("ada", telegram_id=42)
+        entry = storage.ensure_access(42, user.id, status="active")
+        before = _audit_events(tmp_path / "test.db")
+        again = storage.set_access_status(42, "active", actor_id=user.id)
+        assert again == entry
+        assert again.updated_at == entry.updated_at
+        assert _audit_events(tmp_path / "test.db") == before
+        storage.set_access_role(42, "user", actor_id=user.id)
+        assert _audit_events(tmp_path / "test.db") == before
 
 
 class TestCustomExercises:
