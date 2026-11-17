@@ -261,7 +261,7 @@ class TestDevModeGuard:
         validate_dev_mode(dev_storage)  # no exit
 
     def test_missing_entry_exits_with_instructions(self, dev_storage):
-        with pytest.raises(SystemExit, match="active access entry"):
+        with pytest.raises(SystemExit, match="azure-mini-app-dev seed"):
             validate_dev_mode(dev_storage)
 
     @pytest.mark.parametrize("status", ["pending", "blocked"])

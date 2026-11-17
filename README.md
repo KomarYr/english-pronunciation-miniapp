@@ -56,10 +56,8 @@ and use the inline button) — the Mini App opens.
 **Development without Telegram**: set `MINIAPP_DEV_MODE=1` and open
 `http://127.0.0.1:8000` in a plain browser; requests run as
 `MINIAPP_DEV_USER_ID`, which must hold an active access entry like
-anyone else. On a fresh database, list that ID in
-`ALLOWED_TELEGRAM_IDS` **before the first run** so the bootstrap seed
-creates it; on an existing database, start from a fresh DB file (dev
-data is disposable).
+anyone else. Arrange it with `uv run azure-mini-app-dev seed` — it
+works on fresh and existing databases.
 
 ## Access control lives in the database
 
@@ -69,9 +67,14 @@ every Telegram ID has an Access entry with a Status (`pending`,
 an admin approves them; blocking is immediate and reversible, and
 every change lands in an audit trail.
 
-**Getting access**: open the Mini App or message the bot — you are
-registered as `pending` and the admins are notified. An admin then
-runs `/approve <id>` from the chat.
+**The bootstrap**: put your own Telegram ID in `ADMIN_TELEGRAM_IDS`
+(find it via `/id`) — the first run seeds you as an active admin.
+After that the database is the gate and everyone else gets in the
+same way: open the Mini App or send the Launcher a message →
+registered as `pending`, admins notified → an admin runs
+`/approve <id>`. `ALLOWED_TELEGRAM_IDS` is only for migrating a
+pre-v2 database that already had an allowlist; leave it empty for
+new setups.
 
 **Admin commands** (launcher, admins only — invisible to others):
 
@@ -81,10 +84,10 @@ runs `/approve <id>` from the chat.
 - `/users` — everyone with their status and role
 - `/id` — your own access status
 
-`ALLOWED_TELEGRAM_IDS` is a one-time bootstrap seed: on the first run
-each listed ID becomes an `active` entry; afterwards the database is
-the gate and the setting can be removed. `ADMIN_TELEGRAM_IDS` seeds
-the first admins the same way.
+**Developer database tool**: `uv run azure-mini-app-dev` manages the
+access database from the shell — `seed` (arrange the dev user's
+active entry), `reset` (recreate the DB from the .env seeds, with
+confirmation), `list` (print every access entry).
 
 ## The chat is only a launcher
 
@@ -139,6 +142,7 @@ src/azure_mini_app/
 ├── exercises.py              # built-in catalog (dataclass + seed data)
 ├── domain.py                 # User, Attempt, ScoreReport, WordScore — pure stdlib
 ├── app.py                    # use-cases: quota gate, guardrails, mistake bank
+├── devtools.py               # azure-mini-app-dev CLI: seed/reset/list the DB
 ├── services/
 │   ├── azure_assessment.py   # the ONLY module importing the Speech SDK
 │   ├── storage.py            # SQLite: users/exercises/attempts + access/audit (schema v2)

@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 azure-mini-app-telegram = "azure_mini_app.interactions.telegram:main"
 azure-mini-app-web = "azure_mini_app.interactions.miniapp.web:main"
+azure-mini-app-dev = "azure_mini_app.devtools:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

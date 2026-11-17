@@ -169,7 +169,6 @@ def validate_dev_mode(storage: Storage) -> None:
         sys.exit(
             "MINIAPP_DEV_MODE is on, but the dev user (MINIAPP_DEV_USER_ID "
             f"{settings.miniapp_dev_user_id}) has no active access entry. "
-            "On a fresh database, put the dev ID in ALLOWED_TELEGRAM_IDS "
-            "before the first run (the bootstrap seed); on an existing "
-            "database, start from a fresh DB file — dev data is disposable."
+            "Run `uv run azure-mini-app-dev seed` to create one — it works "
+            "on fresh and existing databases."
         )
