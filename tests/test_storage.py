@@ -296,6 +296,46 @@ class TestAccessEntries:
         assert _audit_events(tmp_path / "test.db") == before
 
 
+class TestAccessListing:
+    """Ticket 05: the admin commands list people, so storage lists rows."""
+
+    def test_list_access_returns_everyone_ordered_by_creation(self, storage):
+        ids = [101, 102, 103]
+        for i, telegram_id in enumerate(ids):
+            user = storage.create_user(f"u{i}", telegram_id=telegram_id)
+            storage.ensure_access(telegram_id, user.id)
+
+        listed = storage.list_access_entries()
+        assert [e.telegram_id for e in listed] == ids
+
+    def test_list_access_filters_by_status(self, storage):
+        for telegram_id, status in ((101, "pending"), (102, "active")):
+            user = storage.create_user("u", telegram_id=telegram_id)
+            storage.ensure_access(telegram_id, user.id, status=status)
+
+        assert [
+            e.telegram_id for e in storage.list_access_entries(status="pending")
+        ] == [101]
+        assert [
+            e.telegram_id for e in storage.list_access_entries(status="active")
+        ] == [102]
+
+    def test_list_access_empty_table(self, storage):
+        assert storage.list_access_entries() == []
+
+    def test_count_active_admins_counts_only_active_admins(self, storage):
+        for telegram_id, status, role in (
+            (101, "active", "admin"),
+            (102, "pending", "admin"),
+            (103, "blocked", "admin"),
+            (104, "active", "user"),
+        ):
+            user = storage.create_user("u", telegram_id=telegram_id)
+            storage.ensure_access(telegram_id, user.id, status=status, role=role)
+
+        assert storage.count_active_admins() == 1
+
+
 class TestCustomExercises:
     def test_add_and_get(self, storage):
         user = storage.create_user("u")

@@ -512,6 +512,29 @@ class Storage:
             row = _fetch_access_row(conn, telegram_id)
         return self._access_from_row(row) if row else None
 
+    def list_access_entries(
+        self, *, status: AccessStatus | None = None
+    ) -> list[AccessEntry]:
+        """Every access entry, or just one status's, by creation order."""
+        query = "SELECT * FROM access"
+        params: tuple = ()
+        if status is not None:
+            _validate_status(status)
+            query += " WHERE status = ?"
+            params = (status,)
+        query += " ORDER BY created_at, telegram_id"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._access_from_row(row) for row in rows]
+
+    def count_active_admins(self) -> int:
+        """The last-admin guard's input: how many admins could still act."""
+        with self._connect() as conn:
+            (count,) = conn.execute(
+                "SELECT COUNT(*) FROM access WHERE role = 'admin' AND status = 'active'"
+            ).fetchone()
+        return int(count)
+
     def set_access_status(
         self, telegram_id: int, status: AccessStatus, *, actor_id: int | None = None
     ) -> AccessEntry:

@@ -2,8 +2,12 @@
 
 Ticket 04: the launcher gate consults the access table (Seam 3 — real
 storage, mocked aiogram objects); /id is a status checker.
+Ticket 05: admin commands /requests, /approve, /block, /users — thin
+handlers over services/access_admin.py, enforced admin-only at both
+the middleware and the command layer.
 """
 
+import sqlite3
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +16,10 @@ from aiogram.types import CallbackQuery, Message
 
 from azure_mini_app import settings
 from azure_mini_app.interactions import telegram as tg
-from azure_mini_app.interactions.telegram import AccessMiddleware
+from azure_mini_app.interactions.telegram import (
+    AccessMiddleware,
+    AdminCommandMiddleware,
+)
 from azure_mini_app.services.storage import Storage
 
 
@@ -212,11 +219,230 @@ class TestGateBypassAndLegacyEnv:
         assert entry.status == "pending"
 
 
+class TestAdminCommandMiddleware:
+    """Admin commands are invisible to non-admins: they get the same
+    fallback as any unknown text, and no handler runs."""
+
+    async def test_non_admin_gets_fallback_and_no_handler(self, storage):
+        grant(storage, telegram_id=1)  # active, plain user
+        handler = AsyncMock()
+        message = make_message("/requests", user_id=1)
+        await AdminCommandMiddleware(storage)(handler, message, {})
+        handler.assert_not_awaited()
+        assert message.answer.call_args.args[0] == tg.FALLBACK_TEXT
+
+    async def test_admin_passes_through(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        handler = AsyncMock(return_value="passed")
+        message = make_message("/requests", user_id=1)
+        result = await AdminCommandMiddleware(storage)(handler, message, {})
+        assert result == "passed"
+
+    async def test_non_command_updates_pass_through(self, storage):
+        grant(storage, telegram_id=1)
+        handler = AsyncMock(return_value="passed")
+        result = await AdminCommandMiddleware(storage)(
+            handler, make_message("hello", user_id=1), {}
+        )
+        assert result == "passed"
+
+
+class TestAdminRequests:
+    async def test_requests_lists_pending_with_names_and_ids(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="pending")
+        grant(storage, telegram_id=102, status="pending")
+        message = make_message("/requests", user_id=1)
+        await tg.cmd_requests(message, storage)
+        text = message.answer.call_args.args[0]
+        assert "Ada" in text  # display name, not just the ID
+        assert "101" in text and "102" in text
+
+    async def test_requests_without_pending_says_so(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/requests", user_id=1)
+        await tg.cmd_requests(message, storage)
+        assert "No pending" in message.answer.call_args.args[0]
+
+    async def test_requests_for_non_admin_leaks_nothing_at_command_layer(self, storage):
+        grant(storage, telegram_id=1)  # active, not admin
+        grant(storage, telegram_id=101, status="pending")
+        message = make_message("/requests", user_id=1)
+        await tg.cmd_requests(message, storage)
+        text = message.answer.call_args.args[0]
+        assert "101" not in text
+        assert text == tg.FALLBACK_TEXT
+
+
+class TestAdminApprove:
+    async def test_approve_activates_a_pending_user(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="pending")
+        message = make_message("/approve 101", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert "active" in message.answer.call_args.args[0]
+        assert storage.get_access(101).status == "active"
+
+    async def test_approve_reactivates_a_blocked_user_keeping_data(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="blocked")
+        user = storage.get_user_by_telegram_id(101)
+        assert user is not None and user.id is not None
+        storage.add_custom_exercise(user.id, "Custom text to keep")
+        exercises_before = storage.list_exercises_for_user(user.id)
+
+        message = make_message("/approve 101", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert storage.get_access(101).status == "active"
+        assert storage.list_exercises_for_user(user.id) == exercises_before
+
+    async def test_approve_already_active_user_says_so(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="active")
+        message = make_message("/approve 101", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert "already" in message.answer.call_args.args[0]
+
+    async def test_approve_unknown_id_says_no_request(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/approve 424242", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert "No access request" in message.answer.call_args.args[0]
+
+    async def test_approve_without_argument_shows_usage(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/approve", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert "Usage" in message.answer.call_args.args[0]
+
+    async def test_approve_with_garbage_argument_shows_usage(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/approve abc", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert "Usage" in message.answer.call_args.args[0]
+
+    async def test_approve_by_non_admin_is_invisible_and_changes_nothing(self, storage):
+        grant(storage, telegram_id=1)  # active, not admin
+        grant(storage, telegram_id=101, status="pending")
+        message = make_message("/approve 101", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert message.answer.call_args.args[0] == tg.FALLBACK_TEXT
+        assert storage.get_access(101).status == "pending"
+
+    async def test_approve_by_non_admin_without_argument_shows_no_usage(self, storage):
+        # the usage line would reveal the command — invisibility comes
+        # before argument parsing
+        grant(storage, telegram_id=1)  # active, not admin
+        message = make_message("/approve", user_id=1)
+        await tg.cmd_approve(message, storage)
+        assert message.answer.call_args.args[0] == tg.FALLBACK_TEXT
+
+    async def test_approve_is_audited_with_actor_and_change(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="pending")
+        message = make_message("/approve 101", user_id=1)
+        await tg.cmd_approve(message, storage)
+        change = next(
+            row for row in _audit_events(settings.db_path) if row[0] == "status_changed"
+        )
+        assert change[3] == "pending → active"
+        assert change[1] == storage.get_access(1).user_id  # the admin acted
+        assert change[2] == storage.get_access(101).user_id  # on the stranger
+
+
+class TestAdminBlock:
+    async def test_block_deactivates_a_user_immediately(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="active")
+        message = make_message("/block 101", user_id=1)
+        await tg.cmd_block(message, storage)
+        assert "blocked" in message.answer.call_args.args[0]
+        assert storage.get_access(101).status == "blocked"
+
+    async def test_blocking_the_last_admin_is_refused(self, storage):
+        grant(storage, telegram_id=1, role="admin")  # the only admin
+        message = make_message("/block 1", user_id=1)
+        await tg.cmd_block(message, storage)
+        assert "last" in message.answer.call_args.args[0]
+        assert storage.get_access(1).status == "active"
+        assert storage.count_active_admins() == 1
+
+    async def test_blocking_an_admin_is_allowed_when_others_remain(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=2, role="admin")
+        message = make_message("/block 2", user_id=1)
+        await tg.cmd_block(message, storage)
+        assert storage.get_access(2).status == "blocked"
+        assert storage.count_active_admins() == 1
+
+    async def test_block_unknown_id_says_no_request(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/block 424242", user_id=1)
+        await tg.cmd_block(message, storage)
+        assert "No access request" in message.answer.call_args.args[0]
+
+    async def test_block_without_argument_shows_usage(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        message = make_message("/block", user_id=1)
+        await tg.cmd_block(message, storage)
+        assert "Usage" in message.answer.call_args.args[0]
+
+    async def test_block_by_non_admin_is_invisible_and_changes_nothing(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101)  # active, not admin
+        message = make_message("/block 101", user_id=101)
+        await tg.cmd_block(message, storage)
+        assert message.answer.call_args.args[0] == tg.FALLBACK_TEXT
+        assert storage.get_access(101).status == "active"
+
+    async def test_block_is_audited_with_actor_and_change(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101)
+        message = make_message("/block 101", user_id=1)
+        await tg.cmd_block(message, storage)
+        change = next(
+            row for row in _audit_events(settings.db_path) if row[0] == "status_changed"
+        )
+        assert change[3] == "active → blocked"
+        assert change[1] == storage.get_access(1).user_id
+        assert change[2] == storage.get_access(101).user_id
+
+
+class TestAdminUsers:
+    async def test_users_lists_everyone_with_status_and_role(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="pending")
+        grant(storage, telegram_id=102, status="blocked")
+        message = make_message("/users", user_id=1)
+        await tg.cmd_users(message, storage)
+        text = message.answer.call_args.args[0]
+        assert "101" in text and "102" in text and "1" in text
+        assert "pending" in text and "blocked" in text
+        assert "admin" in text
+
+    async def test_users_for_non_admin_leaks_nothing_at_command_layer(self, storage):
+        grant(storage, telegram_id=1, role="admin")
+        grant(storage, telegram_id=101, status="pending")
+        message = make_message("/users", user_id=101)
+        await tg.cmd_users(message, storage)
+        text = message.answer.call_args.args[0]
+        assert text == tg.FALLBACK_TEXT
+        assert "1" not in text.replace(tg.FALLBACK_TEXT, "")
+
+
 def _message_mock(spec: str) -> MagicMock:
     message = MagicMock(spec=Message)
     message.text = spec
     message.answer = AsyncMock()
     return message
+
+
+def _audit_events(db_path) -> list[tuple]:
+    """The audit trail straight from the database (Seam 2 boundary)."""
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute(
+            "SELECT event, actor_id, subject_id, detail FROM audit_log ORDER BY id"
+        ).fetchall()
 
 
 class TestIdStatusChecker:

@@ -43,6 +43,8 @@ from azure_mini_app.interactions.miniapp.access import (
     register_access,
 )
 from azure_mini_app.interactions.miniapp.auth import MiniAppUser, display_name_for
+from azure_mini_app.services import access_admin
+from azure_mini_app.services.access_admin import AccessChange, NotAdminError
 from azure_mini_app.services.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -138,9 +140,47 @@ def _identity_of(tg_user: User) -> MiniAppUser:
     )
 
 
+# The launcher admin commands (ticket 05); each has a handler below.
+ADMIN_COMMANDS = ("/requests", "/approve", "/block", "/users")
+
+
+class AdminCommandMiddleware(BaseMiddleware):
+    """Admin commands are invisible to everyone else (ticket 05).
+
+    A non-admin gets the same fallback as any unknown text — no data,
+    no state change — and no admin handler runs. The command layer
+    (services/access_admin.py) enforces the same rule again, so admin
+    logic stays unreachable even if this gate is bypassed.
+    """
+
+    def __init__(self, storage: Storage) -> None:
+        self.storage = storage
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        text = getattr(event, "text", None) or ""
+        if not text.startswith(ADMIN_COMMANDS):
+            return await handler(event, data)
+        tg_user = data.get("event_from_user") or getattr(event, "from_user", None)
+        if tg_user is not None and access_admin.is_admin(self.storage, tg_user.id):
+            return await handler(event, data)
+        logger.info("Hid admin command from non-admin %s", tg_user)
+        if isinstance(event, Message):
+            await event.answer(FALLBACK_TEXT, reply_markup=_launcher_keyboard())
+        return None
+
+
 def _register_handlers(router: Router) -> None:
     router.message.register(cmd_start, CommandStart())
     router.message.register(cmd_id, Command("id"))
+    router.message.register(cmd_requests, Command("requests"))
+    router.message.register(cmd_approve, Command("approve"))
+    router.message.register(cmd_block, Command("block"))
+    router.message.register(cmd_users, Command("users"))
     router.message.register(voice_note_refused, F.voice)
     router.message.register(fallback_to_launcher, F.text)
 
@@ -178,6 +218,150 @@ async def cmd_id(message: Message, storage: Storage) -> None:
     await message.answer(text)
 
 
+# --- admin commands (ticket 05) --------------------------------------------
+
+APPROVE_USAGE = "Usage: /approve <telegram id>"
+BLOCK_USAGE = "Usage: /block <telegram id>"
+NOT_FOUND_TEXT = (
+    "No access request for ID <code>{telegram_id}</code> — ask them to "
+    "open the Mini App or send any message here first."
+)
+
+APPROVE_TEXTS = {
+    "activated": (
+        "✅ {name} (<code>{telegram_id}</code>) is now active — their "
+        "next Mini App request will just work."
+    ),
+    "reactivated": (
+        "✅ {name} (<code>{telegram_id}</code>) was blocked and is "
+        "active again — their history was kept."
+    ),
+    "already_active": "ℹ️ {name} (<code>{telegram_id}</code>) is already active.",
+}
+
+
+BLOCK_TEXTS = {
+    "blocked": (
+        "⛔ {name} (<code>{telegram_id}</code>) is now blocked — both the "
+        "chat and the Mini App refuse them right away."
+    ),
+    "last_admin": (
+        "Refused: {name} (<code>{telegram_id}</code>) is the last active "
+        "admin — blocking them would lock the tool out of its own admin "
+        "surface."
+    ),
+}
+
+
+def _actor_id(message: Message) -> int:
+    """0 for userless messages (channel posts): Telegram IDs are always
+    positive, so 0 matches no entry and the admin check fails safely."""
+    tg_user = message.from_user
+    return tg_user.id if tg_user else 0
+
+
+def _command_target(text: str | None) -> int | None:
+    """The <telegram id> argument of /approve or /block, if well-formed."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+async def _reply_fallback(message: Message) -> None:
+    """The launcher fallback — also the invisibility reply for admin
+    commands, so a hidden command reads exactly like an unknown one."""
+    await message.answer(FALLBACK_TEXT, reply_markup=_launcher_keyboard())
+
+
+async def _apply_admin_change(
+    message: Message,
+    storage: Storage,
+    action: Callable[[Storage, int, int], AccessChange],
+    *,
+    usage: str,
+    texts: dict[str, str],
+) -> None:
+    """The shared /approve and /block shape. Invisibility comes first:
+    a non-admin learns nothing — not even the usage line — before the
+    argument is even looked at."""
+    actor = _actor_id(message)
+    if not access_admin.is_admin(storage, actor):
+        await _reply_fallback(message)
+        return
+    target = _command_target(message.text)
+    if target is None:
+        await message.answer(usage)
+        return
+    try:
+        change = action(storage, actor, target)
+    except NotAdminError:
+        # the is_admin verdict raced a status change — stay invisible
+        await _reply_fallback(message)
+        return
+    if change.person is None:
+        await message.answer(NOT_FOUND_TEXT.format(telegram_id=target))
+        return
+    person = change.person
+    await message.answer(
+        texts[change.result].format(
+            name=person.display_name, telegram_id=person.telegram_id
+        )
+    )
+
+
+async def cmd_requests(message: Message, storage: Storage) -> None:
+    """List everyone waiting for approval (admin-only)."""
+    try:
+        pending = access_admin.list_pending(storage, _actor_id(message))
+    except NotAdminError:
+        await _reply_fallback(message)
+        return
+    if not pending:
+        await message.answer("No pending access requests. ✅")
+        return
+    lines = [
+        f"• {person.display_name} — <code>{person.telegram_id}</code>"
+        for person in pending
+    ]
+    await message.answer("⏳ Pending access requests:\n" + "\n".join(lines))
+
+
+async def cmd_approve(message: Message, storage: Storage) -> None:
+    """Activate a pending or blocked user (admin-only)."""
+    await _apply_admin_change(
+        message, storage, access_admin.approve, usage=APPROVE_USAGE, texts=APPROVE_TEXTS
+    )
+
+
+async def cmd_block(message: Message, storage: Storage) -> None:
+    """Revoke access immediately (admin-only, last admin protected)."""
+    await _apply_admin_change(
+        message, storage, access_admin.block, usage=BLOCK_USAGE, texts=BLOCK_TEXTS
+    )
+
+
+STATUS_MARKS = {"active": "✅", "pending": "⏳", "blocked": "⛔"}
+
+
+async def cmd_users(message: Message, storage: Storage) -> None:
+    """List everyone with their status and role (admin-only)."""
+    try:
+        people = access_admin.list_all(storage, _actor_id(message))
+    except NotAdminError:
+        await _reply_fallback(message)
+        return
+    lines = [
+        f"{STATUS_MARKS[person.status]} {person.display_name} "
+        f"(<code>{person.telegram_id}</code>) — {person.status}, {person.role}"
+        for person in people
+    ]
+    await message.answer("👥 Everyone with an access entry:\n" + "\n".join(lines))
+
+
 async def voice_note_refused(message: Message) -> None:
     await message.answer(VOICE_REFUSAL_TEXT, reply_markup=_launcher_keyboard())
 
@@ -202,6 +386,7 @@ def create_dispatcher(storage: Storage) -> Dispatcher:
     gate = AccessMiddleware(storage)
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.message.middleware(gate)
+    dispatcher.message.middleware(AdminCommandMiddleware(storage))
     dispatcher.callback_query.middleware(gate)
     dispatcher.include_router(router)
     return dispatcher
