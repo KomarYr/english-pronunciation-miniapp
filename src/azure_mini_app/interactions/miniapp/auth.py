@@ -49,6 +49,8 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
     Follows the Telegram Mini Apps spec: the data-check string is every
     received field except `hash`, sorted alphabetically and joined with
     newlines; the HMAC key is `HMAC-SHA256(bot_token, "WebAppData")`.
+    This includes the Bot API 8.0 `signature` field — proven empirically
+    against a real client capture, pinned in tests/test_miniapp_auth.py.
     """
     if not settings.telegram_bot_token:
         raise MiniAppAuthError("TELEGRAM_BOT_TOKEN is not configured")

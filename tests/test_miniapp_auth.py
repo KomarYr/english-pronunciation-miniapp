@@ -2,14 +2,17 @@
 
 initData is signed here exactly the way Telegram signs it (HMAC-SHA256
 over the alphabetically-sorted fields, keyed by the bot token wrapped in
-"WebAppData") — no real Telegram involved.
+"WebAppData") — no real Telegram involved. A real Bot API 8.0 capture
+carrying the `signature` field is pinned below as a test vector: it
+settles that `signature` belongs inside the data-check string.
 """
 
 import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
-from urllib.parse import quote_plus
+from pathlib import Path
+from urllib.parse import parse_qsl, quote_plus
 
 import pytest
 
@@ -116,6 +119,65 @@ class TestValidateInitData:
         monkeypatch.setattr(settings, "telegram_bot_token", None)
         with pytest.raises(MiniAppAuthError, match="TELEGRAM_BOT_TOKEN"):
             validate_init_data(signed_init_data(), now=NOW)
+
+
+# --- pinned real-world test vector (ticket 01) ---------------------------------
+#
+# A real initData payload captured in Telegram Desktop on 2026-11-17
+# 12:25:56 UTC (Bot API 8.0 client), carrying the modern `signature`
+# field. Sources disagreed about where `signature` belongs: one said it
+# stays inside the bot-token HMAC data-check string, one showed
+# pre-8.0 validators rejecting such payloads. Settled empirically
+# against this capture: the published `hash` matches ONLY when
+# `signature` is included in the data-check string (i.e. every field
+# except `hash`, exactly what the spec says). Excluding it produces a
+# different HMAC (5ba252a1cb17...) — so the pre-8.0 construction is the
+# correct one and no validator fix was needed. This vector pins that:
+# if anyone "fixes" the validator to exclude `signature`, this fails.
+#
+# The raw capture lives in tests/fixtures/real_init_data.txt, which is
+# gitignored — it is personal data, and a verbatim capture is the only
+# thing that can prove the data-check construction (a synthetic payload
+# would be signed by the test itself, proving nothing). To regenerate:
+# open the Mini App in Telegram Desktop, right-click → Inspect →
+# console → `window.Telegram.WebApp.initData`, paste the string into
+# the fixture file. Verification also needs the real TELEGRAM_BOT_TOKEN
+# from .env; the test skips when either is missing.
+
+_REAL_VECTOR_PATH = Path(__file__).parent / "fixtures" / "real_init_data.txt"
+
+
+def _real_init_data() -> str | None:
+    """The captured payload, or None on machines without the local fixture."""
+    try:
+        return _REAL_VECTOR_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+
+
+@pytest.mark.skipif(
+    _real_init_data() is None,
+    reason="no tests/fixtures/real_init_data.txt — see the comment above",
+)
+class TestPinnedRealPayload:
+    def test_real_client_payload_with_signature_field_verifies(self):
+        raw = _real_init_data()
+        assert raw is not None
+        pairs = dict(parse_qsl(raw, keep_blank_values=True))
+        # frozen shortly after the capture so the staleness check passes
+        now = datetime.fromtimestamp(int(pairs["auth_date"]) + 60, tz=UTC)
+        identity = validate_init_data(raw, now=now)
+        # identity must come from the payload itself — never hardcoded
+        # here, the fixture holds personal data that stays out of git
+        user = json.loads(pairs["user"])
+        name = " ".join(
+            part
+            for part in (user.get("first_name"), user.get("last_name"))
+            if part
+        )
+        assert identity == MiniAppUser(
+            telegram_id=int(user["id"]), display_name=name
+        )
 
 
 class TestAllowlist:

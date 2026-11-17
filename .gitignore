@@ -89,3 +89,6 @@ data/
 # OS / misc
 Thumbs.db
 .playwright-mcp/
+
+# Local-only test fixture: real captured initData (personal data)
+tests/fixtures/real_init_data.txt
