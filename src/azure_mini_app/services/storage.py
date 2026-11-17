@@ -136,7 +136,13 @@ AccessStatus = Literal["pending", "active", "blocked"]
 AccessRole = Literal["admin", "user"]
 
 # Fixed audit vocabulary — not a free-form string (see _record_audit).
-AuditEvent = Literal["access_seeded", "access_created", "status_changed", "role_changed"]
+AuditEvent = Literal[
+    "access_seeded",
+    "access_created",
+    "status_changed",
+    "role_changed",
+    "auth_denied",
+]
 
 
 def _validate_status(status: AccessStatus) -> None:
@@ -167,6 +173,16 @@ class AccessEntry:
     role: AccessRole
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AuthDenial:
+    """One rejected authentication attempt, as the owner reads it back."""
+
+    actor_id: int | None
+    subject_id: int | None
+    detail: str
+    created_at: datetime
 
 
 def _utcnow_iso() -> str:
@@ -552,6 +568,50 @@ class Storage:
         return self._change_access(
             telegram_id, "role", role, actor_id=actor_id, event="role_changed"
         )
+
+    def record_auth_denial(
+        self, *, ip: str, reason: str, claimed_telegram_id: int | None = None
+    ) -> None:
+        """A rejected authentication attempt (ticket 06, OWASP logging).
+
+        The caller is unverified, so the actor is NULL (the system) and
+        the subject is the *claimed* telegram id resolved to a user row
+        when possible — a fabrication-friendly hint, never a fact. The
+        detail keeps the client IP and the internal reason.
+        """
+        with self._connect() as conn:
+            subject_id = None
+            if claimed_telegram_id is not None:
+                row = conn.execute(
+                    "SELECT id FROM users WHERE telegram_id = ?",
+                    (claimed_telegram_id,),
+                ).fetchone()
+                subject_id = int(row["id"]) if row else None
+            self._record_audit(
+                conn,
+                actor_id=None,
+                subject_id=subject_id,
+                event="auth_denied",
+                detail=f"{ip}: {reason}",
+            )
+
+    def list_auth_denials(self, *, limit: int = 50) -> list[AuthDenial]:
+        """Most recent first — how the owner notices probing (story 18)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT actor_id, subject_id, detail, created_at FROM audit_log "
+                "WHERE event = 'auth_denied' ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            AuthDenial(
+                actor_id=row["actor_id"],
+                subject_id=row["subject_id"],
+                detail=row["detail"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+            for row in rows
+        ]
 
     def _change_access(
         self,

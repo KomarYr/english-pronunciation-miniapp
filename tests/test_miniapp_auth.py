@@ -20,6 +20,7 @@ from azure_mini_app import settings
 from azure_mini_app.interactions.miniapp.auth import (
     MiniAppAuthError,
     MiniAppUser,
+    claimed_telegram_id,
     validate_dev_mode,
     validate_init_data,
 )
@@ -115,6 +116,64 @@ class TestValidateInitData:
         monkeypatch.setattr(settings, "telegram_bot_token", None)
         with pytest.raises(MiniAppAuthError, match="TELEGRAM_BOT_TOKEN"):
             validate_init_data(signed_init_data(), now=NOW)
+
+
+class TestStrictParsing:
+    """Ticket 06: malformed input is rejected, never repaired.
+
+    Lenient parsing (first-match wins, encoding errors ignored) is an
+    injection vector; every rule here is pinned by a payload that a
+    lazy parser would silently accept.
+    """
+
+    def test_oversized_payload_rejected(self, bot_token):
+        bloated = signed_init_data() + "&pad=" + "a" * 5000
+        with pytest.raises(MiniAppAuthError, match="large"):
+            validate_init_data(bloated, now=NOW)
+
+    def test_malformed_percent_encoding_rejected(self, bot_token):
+        raw = signed_init_data()
+        broken = raw.replace(quote_plus(json.dumps(USER)), "%zz-nope")
+        with pytest.raises(MiniAppAuthError, match="percent"):
+            validate_init_data(broken, now=NOW)
+
+    def test_dangling_percent_rejected(self, bot_token):
+        raw = signed_init_data()
+        broken = raw.replace(quote_plus(json.dumps(USER)), json.dumps(USER) + "%")
+        with pytest.raises(MiniAppAuthError, match="percent"):
+            validate_init_data(broken, now=NOW)
+
+    def test_duplicate_field_rejected(self, bot_token):
+        raw = signed_init_data()
+        # a second user= — a first-match parser would silently take one
+        duplicated = raw + "&user=%7B%22id%22%3A%201%7D"
+        with pytest.raises(MiniAppAuthError, match="duplicate"):
+            validate_init_data(duplicated, now=NOW)
+
+    def test_duplicate_hash_rejected(self, bot_token):
+        raw = signed_init_data()
+        duplicated = raw + "&hash=" + "0" * 64
+        with pytest.raises(MiniAppAuthError, match="duplicate"):
+            validate_init_data(duplicated, now=NOW)
+
+
+class TestClaimedTelegramId:
+    """The audit hint extracted from an already-rejected payload."""
+
+    def test_well_formed_payload_yields_the_claimed_id(self, bot_token):
+        raw = signed_init_data(tamper=True)  # valid shape, bad signature
+        assert claimed_telegram_id(raw) == 42
+
+    def test_malformed_payload_yields_none(self, bot_token):
+        assert claimed_telegram_id("user=%zz") is None
+
+    def test_duplicate_fields_yield_none(self, bot_token):
+        raw = signed_init_data(tamper=True)
+        assert claimed_telegram_id(raw + "&user=%7B%7D") is None
+
+    def test_payload_without_user_yields_none(self, bot_token):
+        raw = signed_init_data(tamper=True, drop="user")
+        assert claimed_telegram_id(raw) is None
 
 
 # --- pinned real-world test vector (ticket 01) ---------------------------------

@@ -7,6 +7,7 @@ switches on. No rendering or business rules here.
 """
 
 import asyncio
+import logging
 import tempfile
 from pathlib import Path
 from typing import Annotated
@@ -22,6 +23,7 @@ from azure_mini_app.interactions.miniapp.access import (
 from azure_mini_app.interactions.miniapp.auth import (
     MiniAppAuthError,
     MiniAppUser,
+    claimed_telegram_id,
     validate_init_data,
 )
 from azure_mini_app.services.azure_assessment import (
@@ -33,10 +35,21 @@ from azure_mini_app.services.quota import QuotaExceededError
 from azure_mini_app.services.storage import ExerciseStat, Storage, UserStats
 from azure_mini_app.services.voice import VoiceConversionError, to_wav
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api")
 
 MAX_RECORD_SECONDS = 120  # same guardrail as the chat voice-note flow
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # ~10 MB WAV-equivalent is plenty
+
+# Auth-failure throttle policy (ticket 06): five failures inside a
+# sliding minute per client IP. A legitimate user fails once (stale
+# initData) and reopens the app; a prober fails continuously.
+AUTH_FAILURE_LIMIT = 5
+AUTH_FAILURE_WINDOW_SECONDS = 60.0
+
+AUTH_FAILED_MESSAGE = "Authentication failed — reopen the Mini App and try again."
+THROTTLED_MESSAGE = "Too many attempts — wait a minute and try again."
 
 
 # --- request dependencies -----------------------------------------------------
@@ -46,34 +59,82 @@ def get_storage(request: Request) -> Storage:
     return request.app.state.storage
 
 
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _deny(
+    request: Request,
+    *,
+    code: str,
+    message: str,
+    reason: str,
+    claimed: int | None,
+) -> HTTPException:
+    """Count the denial (audit + throttle), then answer it.
+
+    Once the window is tripped the answer is the generic 429 — the
+    caller learns nothing about whether the signature was even close.
+    Valid credentials never reach here; they clear the bucket instead.
+    """
+    ip = _client_ip(request)
+    if request.app.state.auth_throttle.is_limited(ip):
+        request.app.state.storage.record_auth_denial(
+            ip=ip, reason="throttled", claimed_telegram_id=claimed
+        )
+        return _fail(429, "throttled", THROTTLED_MESSAGE)
+    request.app.state.storage.record_auth_denial(
+        ip=ip, reason=reason, claimed_telegram_id=claimed
+    )
+    request.app.state.auth_throttle.record_failure(ip)
+    return _fail(401, code, message)
+
+
 def get_mini_app_user(
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> MiniAppUser:
-    """initData ("Authorization: tma <raw>") or, in dev mode, the fixed dev user."""
+    """initData ("Authorization: tma <raw>") or, in dev mode, the fixed dev user.
+
+    Hardened boundary (ticket 06): validation comes first, so valid
+    credentials are never throttled — and clear the client's failure
+    bucket (a NAT-sharing user must not inherit a prober's lockout).
+    Every failure counts toward a per-client-IP sliding window and is
+    audited; bodies carry stable codes only, internal reasons go to
+    the server log and the audit table.
+    """
+    ip = _client_ip(request)
     if authorization and authorization.startswith("tma "):
+        raw = authorization.removeprefix("tma ")
         try:
-            return validate_init_data(authorization.removeprefix("tma "))
+            identity = validate_init_data(raw)
         except MiniAppAuthError as error:
-            raise HTTPException(
-                status_code=401, detail={"code": "auth_failed", "message": str(error)}
+            logger.warning("initData rejected from %s: %s", ip, error)
+            raise _deny(
+                request,
+                code="auth_failed",
+                message=AUTH_FAILED_MESSAGE,
+                reason=str(error),
+                claimed=claimed_telegram_id(raw),
             ) from None
+        request.app.state.auth_throttle.clear(ip)
+        return identity
     if settings.miniapp_dev_mode:
         return MiniAppUser(
             telegram_id=settings.miniapp_dev_user_id,
             display_name=settings.miniapp_dev_user_name,
         )
-    raise HTTPException(
-        status_code=401,
-        detail={
-            "code": "auth_required",
-            "message": "Missing Telegram initData — open the Mini App from Telegram.",
-        },
+    raise _deny(
+        request,
+        code="auth_required",
+        message="Missing Telegram initData — open the Mini App from Telegram.",
+        reason="no credentials",
+        claimed=None,
     )
 
 
 PENDING_MESSAGE = (
-    "Your access request has been recorded — reopen the app once the "
-    "bot owner approves you."
+    "Your access request has been recorded — reopen the app once an admin approves you."
 )
 BLOCKED_MESSAGE = "Your access to this trainer was blocked."
 

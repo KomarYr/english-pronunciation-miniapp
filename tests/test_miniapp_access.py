@@ -8,6 +8,7 @@ effect mid-session. Storage side-effects are asserted through Seam 2
 (Storage public methods).
 """
 
+import time
 from datetime import UTC, datetime
 
 import pytest
@@ -18,6 +19,7 @@ from test_miniapp_auth import BOT_TOKEN, signed_init_data
 from azure_mini_app import settings
 from azure_mini_app.domain import ScoreReport
 from azure_mini_app.services import azure_assessment
+from azure_mini_app.services.auth_throttle import SlidingWindowLimiter
 from azure_mini_app.services.storage import Storage
 
 STRANGER = {"id": 42, "first_name": "Ada", "last_name": "Lovelace"}
@@ -255,3 +257,103 @@ class TestBlockedDataSurvives:
         assert response.status_code == 200
         mistakes = response.json()["mistakes"]
         assert [m["exercise"]["id"] for m in mistakes] == [exercise_id]
+
+
+class TestAuthHardening:
+    """Ticket 06: the auth boundary resists abuse and leaks nothing.
+
+    Bodies carry stable codes only; internal reasons go to the server
+    log and the audit table; repeated failures are throttled per client
+    IP with a generic 429.
+    """
+
+    def garbage_headers(self) -> dict[str, str]:
+        return {"Authorization": "tma definitely-not-signed"}
+
+    def test_failed_auth_body_is_generic(self, api_client_factory):
+        client = api_client_factory()
+        response = client.get("/api/me", headers=self.garbage_headers())
+        assert response.status_code == 401
+        detail = response.json()["detail"]
+        assert detail["code"] == "auth_failed"
+        for leak in ("hash", "signature", "stale", "initData", "token"):
+            assert leak not in detail["message"].lower()
+
+    def test_internal_reason_reaches_server_log(self, api_client_factory, caplog):
+        client = api_client_factory()
+        with caplog.at_level("WARNING"):
+            client.get("/api/me", headers=self.garbage_headers())
+        assert "no hash" in caplog.text  # the real reason, server-side only
+
+    def test_repeated_failures_are_throttled(self, api_client_factory):
+        client = api_client_factory()
+        for _ in range(5):
+            assert (
+                client.get("/api/me", headers=self.garbage_headers()).status_code == 401
+            )
+        throttled = client.get("/api/me", headers=self.garbage_headers())
+        assert throttled.status_code == 429
+        assert throttled.json()["detail"]["code"] == "throttled"
+
+    def test_throttle_body_carries_no_diagnostics(self, api_client_factory):
+        client = api_client_factory()
+        for _ in range(5):
+            client.get("/api/me", headers=self.garbage_headers())
+        detail = client.get("/api/me", headers=self.garbage_headers()).json()["detail"]
+        assert set(detail) == {"code", "message"}
+        assert not any(char.isdigit() for char in detail["message"])
+
+    def test_missing_credentials_also_trip_the_throttle(self, api_client_factory):
+        client = api_client_factory()
+        for _ in range(5):
+            assert client.get("/api/me").status_code == 401
+        assert client.get("/api/me").status_code == 429
+
+    def test_auth_denials_reach_the_audit_table(self, api_client_factory):
+        client = api_client_factory()
+        client.get("/api/me", headers=self.garbage_headers())
+        denials = Storage(settings.db_path).list_auth_denials()
+        assert denials, "the 401 must be audited"
+        assert "no hash" in denials[0].detail
+
+    def test_denial_records_the_claimed_identity(self, api_client_factory):
+        # a tampered signature still carries a well-formed user field:
+        # the audit row's subject names who the sender claimed to be
+        client = api_client_factory(seed_ids=frozenset({42}))
+        tampered = signed_init_data(user=STRANGER, bot_token=BOT_TOKEN, tamper=True)
+        client.get("/api/me", headers={"Authorization": f"tma {tampered}"})
+        denial = Storage(settings.db_path).list_auth_denials()[0]
+        user = Storage(settings.db_path).get_user_by_telegram_id(42)
+        assert user is not None
+        assert denial.subject_id == user.id
+        assert denial.detail.endswith("signature mismatch")
+
+    def test_valid_credentials_are_never_throttled(self, api_client_factory):
+        # the NAT case: a prober trips the bucket, a legitimate user on
+        # the same IP still gets in — validation comes first
+        client = api_client_factory(seed_ids=frozenset({42}))
+        for _ in range(6):
+            client.get("/api/me", headers=self.garbage_headers())
+        assert client.get("/api/me", headers=stranger_headers()).status_code == 200
+
+    def test_throttle_resets_as_the_window_slides(self, monkeypatch, tmp_path):
+        # elapsed-time recovery, pinned at the HTTP boundary with a
+        # deliberately tiny window (the unit tests move the clock by
+        # hand; this proves the wiring uses real time)
+        make_app(monkeypatch, tmp_path)
+        from azure_mini_app.interactions.miniapp.web import create_app
+
+        client = TestClient(create_app())
+        client.app.state.auth_throttle = SlidingWindowLimiter(limit=5, window=0.3)
+        for _ in range(5):
+            assert (
+                client.get("/api/me", headers=self.garbage_headers()).status_code == 401
+            )
+        assert client.get("/api/me", headers=self.garbage_headers()).status_code == 429
+        time.sleep(0.35)  # let the failures slide out of the window
+        assert client.get("/api/me", headers=self.garbage_headers()).status_code == 401
+
+    def test_active_users_are_unaffected_by_the_throttle(self, api_client_factory):
+        client = api_client_factory(seed_ids=frozenset({42}))
+        for _ in range(10):  # normal practice is many requests, no failures
+            assert client.get("/api/me", headers=stranger_headers()).status_code == 200

@@ -15,6 +15,7 @@ Two paths reach the API:
 import hashlib
 import hmac
 import json
+import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,6 +26,13 @@ from azure_mini_app import settings
 # initData older than a day is not trusted: Telegram regenerates it every
 # time the Mini App is opened, so a long-lived one only signals tampering.
 MAX_AUTH_AGE_SECONDS = 86_400.0
+# A real initData is a few hundred bytes; 4 KiB leaves room for long
+# display names and signature fields while stopping payload stuffing.
+MAX_INIT_DATA_BYTES = 4096
+
+# Any '%' not followed by two hex digits is broken percent-encoding.
+# Python's parse_qsl silently passes these through instead of failing.
+_INVALID_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 
 class MiniAppAuthError(Exception):
@@ -53,6 +61,41 @@ def display_name_for(
     )
 
 
+def _strict_pairs(init_data: str) -> dict[str, str]:
+    """Parse initData strictly: no repair, no first-match-wins.
+
+    Malformed percent-encoding, duplicate fields (a duplicated `hash`
+    included) and oversized payloads are rejected here, before the
+    signature is even computed — parser confusion must not reach the
+    cryptographic check (OWASP: fail closed).
+    """
+    if len(init_data.encode("utf-8")) > MAX_INIT_DATA_BYTES:
+        raise MiniAppAuthError("initData is too large")
+    if _INVALID_PERCENT.search(init_data):
+        raise MiniAppAuthError("initData has malformed percent-encoding")
+    pairs = parse_qsl(init_data, keep_blank_values=True)
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise MiniAppAuthError("initData has duplicate fields")
+    return dict(pairs)
+
+
+def claimed_telegram_id(init_data: str) -> int | None:
+    """Best-effort id from an *already-rejected* payload — audit hint only.
+
+    Reuses the strict parser (no lenient re-implementation), so a
+    malformed or duplicated payload simply yields None. Unverified by
+    definition: the signature already failed, so this may name whoever
+    the sender claimed to be — never a fact, never an access decision.
+    """
+    try:
+        fields = _strict_pairs(init_data)
+        user = json.loads(fields.get("user") or "null")
+        return int(user["id"]) if user else None
+    except MiniAppAuthError, KeyError, TypeError, ValueError:
+        return None
+
+
 def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAppUser:
     """Verify Telegram-signed initData and extract the user identity.
 
@@ -64,12 +107,12 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
     """
     if not settings.telegram_bot_token:
         raise MiniAppAuthError("TELEGRAM_BOT_TOKEN is not configured")
-    pairs = parse_qsl(init_data, keep_blank_values=True)
-    provided_hash = next((value for key, value in pairs if key == "hash"), None)
+    fields = _strict_pairs(init_data)
+    provided_hash = fields.get("hash")
     if not provided_hash:
         raise MiniAppAuthError("initData has no hash field")
     data_check_string = "\n".join(
-        f"{key}={value}" for key, value in sorted(pairs) if key != "hash"
+        f"{key}={value}" for key, value in sorted(fields.items()) if key != "hash"
     )
     secret_key = hmac.new(
         b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256
@@ -80,7 +123,7 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
     if not hmac.compare_digest(expected_hash, provided_hash):
         raise MiniAppAuthError("initData signature mismatch")
 
-    raw_auth_date = next((value for key, value in pairs if key == "auth_date"), None)
+    raw_auth_date = fields.get("auth_date")
     if raw_auth_date is None:
         raise MiniAppAuthError("initData has no auth_date field")
     try:
@@ -90,7 +133,7 @@ def validate_init_data(init_data: str, *, now: datetime | None = None) -> MiniAp
     if age > MAX_AUTH_AGE_SECONDS:
         raise MiniAppAuthError("initData is stale — reopen the Mini App")
 
-    raw_user = next((value for key, value in pairs if key == "user"), None)
+    raw_user = fields.get("user")
     if raw_user is None:
         raise MiniAppAuthError("initData has no user field")
     try:

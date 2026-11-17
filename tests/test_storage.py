@@ -275,6 +275,45 @@ class TestAccessEntries:
         with pytest.raises(KeyError):
             storage.set_access_role(42, "admin")
 
+
+class TestAuthDenialAudit:
+    """Ticket 06: rejected authentication lands in the audit table."""
+
+    def test_denial_for_known_person_resolves_subject(self, storage):
+        user = storage.create_user("ada", telegram_id=42)
+        storage.ensure_access(42, user.id)
+        storage.record_auth_denial(
+            ip="1.2.3.4", reason="signature mismatch", claimed_telegram_id=42
+        )
+        denial = storage.list_auth_denials()[0]
+        assert denial.actor_id is None  # no verified identity — the system records
+        assert denial.subject_id == user.id
+        assert "1.2.3.4" in denial.detail
+        assert "signature mismatch" in denial.detail
+        assert denial.created_at is not None  # timestamped
+
+    def test_denial_without_known_subject(self, storage):
+        storage.record_auth_denial(
+            ip="9.9.9.9", reason="stale", claimed_telegram_id=None
+        )
+        denial = storage.list_auth_denials()[0]
+        assert denial.actor_id is None and denial.subject_id is None
+        assert "9.9.9.9" in denial.detail and "stale" in denial.detail
+
+    def test_denial_with_unknown_claimed_id_has_no_subject(self, storage):
+        storage.record_auth_denial(
+            ip="8.8.8.8", reason="stale", claimed_telegram_id=777
+        )
+        assert storage.list_auth_denials()[0].subject_id is None
+
+    def test_denials_list_most_recent_first(self, storage):
+        for ip in ("1.1.1.1", "2.2.2.2"):
+            storage.record_auth_denial(ip=ip, reason="x")
+        assert [d.detail.split(":")[0] for d in storage.list_auth_denials()] == [
+            "2.2.2.2",
+            "1.1.1.1",
+        ]
+
     def test_rejects_unknown_status_and_role(self, storage):
         user = storage.create_user("ada", telegram_id=42)
         with pytest.raises(ValueError):

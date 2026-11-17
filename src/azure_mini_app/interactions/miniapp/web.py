@@ -26,6 +26,7 @@ from azure_mini_app import settings
 from azure_mini_app.interactions.miniapp import api
 from azure_mini_app.interactions.miniapp.auth import validate_dev_mode
 from azure_mini_app.interactions.telegram import create_dispatcher
+from azure_mini_app.services.auth_throttle import SlidingWindowLimiter
 from azure_mini_app.services.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,10 @@ def create_app() -> FastAPI:
 
     application = FastAPI(title="azure-mini-app", lifespan=lifespan)
     application.state.storage = storage
+    # Per-IP sliding-window throttle on authentication failures (ticket 06)
+    application.state.auth_throttle = SlidingWindowLimiter(
+        limit=api.AUTH_FAILURE_LIMIT, window=api.AUTH_FAILURE_WINDOW_SECONDS
+    )
 
     application.include_router(api.router)
 
