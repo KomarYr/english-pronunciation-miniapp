@@ -94,6 +94,7 @@ body.recording .tab-bar { display: none; }
   border-radius: var(--card-radius);
   padding: 14px;
 }
+.underline { font-style: italic; text-decoration: underline; display: block; margin-top: 8px; }
 .card.center { text-align: center; }
 .card-title { margin: 0 0 10px; font-size: 0.95rem; }
 

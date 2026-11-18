@@ -43,7 +43,7 @@ export async function renderPracticeList(target: HTMLElement): Promise<void> {
     rows: "4",
     placeholder: "Paste an English text (10–50 words)…",
   });
-  const submit = el("button", { type: "submit", class: "primary" }, "Save & practice");
+  const submit = el("button", { type: "submit", class: "primary" }, "➕ Save & practice");
   customForm.append(textarea, submit);
   customForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -59,7 +59,7 @@ export async function renderPracticeList(target: HTMLElement): Promise<void> {
       submit.disabled = false;
     }
   });
-  const toggle = el("button", { class: "secondary wide" }, "➕ Practice my own text");
+  const toggle = el("button", { class: "secondary wide" }, "Add your own text");
   toggle.addEventListener("click", () => {
     customForm.hidden = !customForm.hidden;
     if (!customForm.hidden) textarea.focus();
@@ -122,8 +122,12 @@ export async function openExercise(target: HTMLElement, exercise: Exercise): Pro
     { class: "exercise-view" },
     back,
     el("div", { class: "card" },
-      el("h3", { class: "exercise-heading", text: exercise.title }),
-      el("p", { class: "reference-text", text: exercise.reference_text }),
+      el("h3", {
+        class: "exercise-heading", text: `Pronunciation Practice: ${exercise.title}.` }),
+      el("p", { class: "reference-text" }, 
+        el("span", {text: "Read the text:" }),
+        el("span", { class: "underline" },  exercise.reference_text)
+      ),
       exercise.phoneme_focus.length > 0
         ? el("div", { class: "chip-row" }, ...exercise.phoneme_focus.map((p) => el("span", { class: "chip", text: `/${p}/` })))
         : null,
