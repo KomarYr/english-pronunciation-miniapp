@@ -1,5 +1,16 @@
 # English Pronunciation Trainer
 
+<div align="center">
+
+[![Python](https://img.shields.io/badge/Python-3.14%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24%2B-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Azure Speech](https://img.shields.io/badge/Azure-Speech-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/products/ai-services/speech-service)
+[![Telegram Mini App](https://img.shields.io/badge/Telegram-Mini%20App-26A5E4?logo=telegram&logoColor=white)](https://core.telegram.org/bots/webapps)
+[![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](#license)
+
+</div>
+
 A personal English-practice tool built on **Azure Speech pronunciation
 assessment**: read an exercise aloud, get a per-word report, and weak
 exercises automatically land in your **mistake bank** so you know exactly
@@ -27,37 +38,125 @@ report. The chat is just the launcher.
 
 ## Quick start
 
-Requires Python 3.14+, [uv](https://docs.astral.sh/uv/), Node 24+ and
-[ffmpeg](https://ffmpeg.org) (`sudo apt install ffmpeg` on Ubuntu).
+### 1. Install the prerequisites
+
+You need **Python 3.14+**, **[uv](https://docs.astral.sh/uv/)**, **Node.js
+24+** and **[ffmpeg](https://ffmpeg.org)**. `uv` can install Python itself,
+so the commands below use `uv python install` on every OS; native package
+managers are listed as an alternative.
+
+**Linux (Debian/Ubuntu)**
 
 ```bash
-# 1. Install dependencies (backend + frontend)
+# uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Python 3.14 (uv-managed)
+uv python install 3.14
+
+# Node.js 24+
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# ffmpeg
+sudo apt install ffmpeg
+```
+
+**macOS (Homebrew)**
+
+```bash
+brew install uv
+uv python install 3.14      # or: brew install python@3.14
+brew install node           # current Homebrew Node is 24+
+brew install ffmpeg
+```
+
+**Windows (PowerShell)**
+
+```powershell
+winget install --id astral-sh.uv -e
+uv python install 3.14      # or: winget install --id Python.Python.3.14 -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Gyan.FFmpeg -e
+```
+
+Verify the tools are on your `PATH`:
+
+```bash
+uv --version
+node -v
+ffmpeg -version
+```
+
+> Ubuntu's default repositories don't ship 3.14. To use a system interpreter
+> instead of uv's: `sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update && sudo apt install python3.14 python3.14-venv`.
+> NodeSource pins Node 24; anything newer also works.
+
+### 2. Create your Telegram bot
+
+Bots are issued by [@BotFather](https://t.me/BotFather):
+
+1. Open [@BotFather](https://t.me/BotFather), send `/newbot`, pick a display
+   name and a username ending in `bot`.
+2. Copy the **HTTP API token** into `TELEGRAM_BOT_TOKEN` in `.env`.
+3. Once your HTTPS URL is live (step 5), attach the Mini App as the bot's menu
+   button — `/setmenubutton` in BotFather, or Bot Settings → Menu Button.
+4. Send `/id` to the bot to learn your numeric Telegram ID for
+   `ADMIN_TELEGRAM_IDS`.
+
+Further reading: [creating a bot](https://core.telegram.org/bots/features#creating-a-new-bot) ·
+[Bot API](https://core.telegram.org/bots/api) ·
+[Mini Apps](https://core.telegram.org/bots/webapps).
+
+### 3. Install dependencies
+
+```bash
 uv sync
 cd frontend && npm install && npm run build && cd ..
+```
 
-# 2. Add your Azure Speech credentials and the bot token to .env
-#    (copy the template and fill in your values)
+### 4. Configure `.env`
+
+```bash
 cp .env.example .env
+# fill in SUBSCRIPTION_KEY, SERVICE_REGION, TELEGRAM_BOT_TOKEN,
+# TELEGRAM_WEBHOOK_SECRET and ADMIN_TELEGRAM_IDS
+```
 
-# 3. Expose the web server (local dev): any HTTPS tunnel works,
-#    e.g. tailscale funnel or cloudflared
+### 5. Expose the web server
+
+Any HTTPS tunnel works; Tailscale and cloudflared both ship Linux, macOS and
+Windows installers.
+
+```bash
 sudo tailscale funnel --bg --https=443 http://localhost:8000
-
-# 4. Put URL from tailscale funnel output into .env so the bot registers its webhook there
+# drop `sudo` on macOS/Windows, then add the printed URL to .env:
 echo "MINIAPP_PUBLIC_URL=https://<your-tunnel-host>" >> .env
+```
 
-# 5. Run the server — Mini App + API + Telegram webhook in one process
+### 6. Run it
+
+```bash
 uv run azure-mini-app-web
 ```
 
-Open the bot in Telegram, press the **Menu button** (or send `/start`
-and use the inline button) — the Mini App opens.
+Open the bot in Telegram, press the **Menu button** (or send `/start` and use
+the inline button) — the Mini App opens.
 
-**Development without Telegram**: set `MINIAPP_DEV_MODE=1` and open
-`http://127.0.0.1:8000` in a plain browser; requests run as
-`MINIAPP_DEV_USER_ID`, which must hold an active access entry like
-anyone else. Arrange it with `uv run azure-mini-app-dev seed` — it
-works on fresh and existing databases.
+### Development without Telegram
+
+Run the Mini App in a plain browser — no bot token and no tunnel:
+
+```bash
+echo "MINIAPP_DEV_MODE=1" >> .env
+echo "MINIAPP_DEV_USER_ID=123456789" >> .env
+
+uv run azure-mini-app-dev seed    # activate the dev user
+uv run azure-mini-app-web
+```
+
+Then open <http://127.0.0.1:8000>. Requests run as `MINIAPP_DEV_USER_ID`,
+which must hold an active access entry like anyone else.
 
 ## Access control lives in the database
 
@@ -215,6 +314,10 @@ fakes.
 - [x] M3 — storage, quota ledger, Azure assessment, use-cases
 - [x] M4 — Telegram Mini App replaces chat interactions (ADR-0001)
 - [ ] M5 — production deployment (VPS/Caddy or Azure Container Apps)
+
+## Built with OpenCode
+
+Created with [OpenCode](https://opencode.ai), the open-source coding agent.
 
 ## License
 
