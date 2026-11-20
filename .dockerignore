@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+
+# Python cache
+**/__pycache__/
+**/*.py[cod]
+.Python
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# Dev tools
+pytest.ini
+**/.pytest_cache/
+**/.ruff_cache/
+.vscode/
+.idea/
+
+# Editor and OS files
+.DS_Store
+**/*.swp
+**/*.log
+.env
+.env.*
+
+# AI tools
+.agents/
+.playwright-mcp/
+.scratch/
+**/*.md
+!README.md
+opencode.jsonc
+skills-lock.json
+
+# Project data
+assets/
+data/
+docs/
+frontend/dist/
+frontend/node_modules/
+learning-records/
+lessons/
+reference/
+tests/

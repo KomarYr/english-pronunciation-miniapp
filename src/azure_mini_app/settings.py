@@ -4,7 +4,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/ → project root
+# Where read-only project files live (frontend dist, .env). Overridable so a
+# packaged install does not depend on this file's location.
+PROJECT_ROOT = Path(environ.get("APP_ROOT") or Path(__file__).resolve().parents[2])
 load_dotenv(PROJECT_ROOT / ".env")
 
 speech_key: str | None = environ.get("SUBSCRIPTION_KEY")
@@ -14,8 +16,13 @@ speech_endpoint: str | None = environ.get("SERVICE_ENDPOINT")
 # Target language of the practice exercises.
 language = "en-US"
 
+# Writable state. Separate from PROJECT_ROOT on purpose: the project tree can
+# be read-only inside a container, while this directory is a volume.
+# `or` matters — a set-but-empty DATA_DIR must fall back, not mean cwd.
+data_dir = Path(environ.get("DATA_DIR") or PROJECT_ROOT / "data")
+
 # SQLite database location (gitignored).
-db_path = PROJECT_ROOT / "data" / "app.db"
+db_path = data_dir / "app.db"
 
 # Telegram bot. Leave TELEGRAM_BOT_TOKEN empty to run the web server
 # without Telegram wiring (dev mode only).
