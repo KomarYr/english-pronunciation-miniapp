@@ -10,6 +10,8 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    outputs:
+      source_ref: ${{ steps.capture_ref.outputs.source_ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -38,3 +40,21 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
+      - name: Capture source ref
+        id: capture_ref
+        env: 
+          SOURCE_REF: ${{ github.ref }}
+        run: echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+  context_summary:
+    needs: checks
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print the event and transferred ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_REF: ${{ needs.checks.outputs.source_ref }}
+        run: |
+          echo "event=$EVENT_NAME"
+          echo "source_ref=$SOURCE_REF"
+  
