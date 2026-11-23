@@ -1,0 +1,23 @@
+services:
+  web:
+    image: "ghcr.io/komaryr/english-pronunciation-miniapp:${TAG:?set TAG}"
+    env_file:
+      - .env
+    environment:
+      MINIAPP_HOST: "0.0.0.0"
+      MINIAPP_PORT: "8000"
+      MINIAPP_DEV_MODE: "0"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ama_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  ama_data:
