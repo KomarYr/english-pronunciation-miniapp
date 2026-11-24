@@ -128,7 +128,8 @@ jobs:
               sudo -n /usr/local/sbin/ama-deploy
 
       - name: Check production health
-        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
           https://azure-mini-app.actumdevs.com/health
 
   context_summary:
